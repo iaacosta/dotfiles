@@ -26,6 +26,7 @@
   dewip = reset HEAD~1
   squash = !sh -c 'REV=$(git rev-parse $1) && git commit --squash $@ && git rebase -i --autosquash $REV^' -
   lg = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr)%Creset %an' --abbrev-commit --date=relative
+  prune-branches = "!sh -c 'git co master | git branch --merged | grep -v master | xargs -n 1 git branch -d'"
 
 [core]
   excludesfile = ~/.gitignore
@@ -42,9 +43,6 @@
 
 [merge]
   ff = only
-
-[commit]
-  template = ~/.gitmessage
 
 [gitsh]
   noGreeting = true
