@@ -1,7 +1,6 @@
 tap 'nodenv/nodenv'
 
 brew 'antigen'
-brew 'chromedriver'
 brew 'heroku'
 brew 'imagemagick'
 brew 'mysql@5.7'
@@ -17,6 +16,7 @@ brew 'yarn'
 
 cask '1password'
 cask 'captain'
+cask 'chromedriver'
 cask 'daisydisk'
 cask 'docker'
 cask 'firefox'
