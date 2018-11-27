@@ -1,9 +1,7 @@
 tap 'nodenv/nodenv'
 
-brew 'antigen'
 brew 'heroku'
 brew 'imagemagick'
-brew 'mysql@5.7'
 brew 'nodenv-aliases'
 brew 'nodenv-vars'
 brew 'nodenv'
@@ -13,6 +11,18 @@ brew 'rbenv-vars'
 brew 'rbenv'
 brew 'ruby-build'
 brew 'yarn'
+brew 'zplug'
+
+brew 'postgresql', start_service: false
+brew 'mysql', start_service: false
+
+# Build tools and libs
+brew 'coreutils'
+brew 'gmp'
+brew 'libyaml'
+brew 'makedepend'
+brew 'pkg-config'
+brew 'readline'
 
 cask '1password'
 cask 'captain'
@@ -21,9 +31,9 @@ cask 'daisydisk'
 cask 'docker'
 cask 'firefox'
 cask 'google-chrome'
+cask 'google-backup-and-sync'
 cask 'harvest'
 cask 'iterm2'
-cask 'licecap'
 cask 'postico'
 cask 'sequel-pro'
 cask 'skype'
