@@ -2,7 +2,15 @@
 export ZPLUG_HOME=/usr/local/opt/zplug
 source $ZPLUG_HOME/init.zsh
 
-zplug "zsh-users/zsh-autosuggestions"
+# zsh users
+zplug "zsh-users/zsh-completions",              defer:0
+zplug "zsh-users/zsh-autosuggestions",          defer:2, on:"zsh-users/zsh-completions"
+zplug "zsh-users/zsh-syntax-highlighting",      defer:3, on:"zsh-users/zsh-autosuggestions"
+zplug "zsh-users/zsh-history-substring-search", defer:3, on:"zsh-users/zsh-syntax-highlighting"
+
+# Supports oh-my-zsh plugins and the like
+zplug "plugins/git",   from:oh-my-zsh
+
 zplug 'dracula/zsh', as:theme
 
 if ! zplug check --verbose; then
@@ -28,3 +36,19 @@ export LIBRARY_PATH=$LIBRARY_PATH:/usr/local/opt/openssl/lib/
 
 # aliases
 [[ -f ~/.aliases ]] && source ~/.aliases
+
+# History settings
+HISTFILE=~/.zhistory
+HISTSIZE=100000
+SAVEHIST=100000
+
+# Don't show duplicate history entires
+setopt hist_find_no_dups
+
+# Remove unnecessary blanks from history
+setopt hist_reduce_blanks
+
+# Share history between instances
+setopt share_history
+
+setopt hist_ignore_space
