@@ -11,6 +11,3 @@ RCRC=$(pwd)/rcrc rcup
 if [ $SHELL != '/bin/zsh' ]; then
   chsh -s /bin/zsh
 fi
-
-# Add global docker compose services
-docker-compose -p global -f $HOME/.docker-compose.global.yml up --no-start
