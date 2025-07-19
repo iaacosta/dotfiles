@@ -6,3 +6,5 @@
 !.zshrc
 !ghostty/
 !ghostty/**
+!tmux/
+!tmux/**
