@@ -48,3 +48,4 @@ export PATH="/opt/homebrew/opt/postgresql@11/bin:$PATH"
 ulimit -n 8192
 alias vim=nvim
 export EDITOR=nvim
+alias glo="git log --oneline -n 20"
