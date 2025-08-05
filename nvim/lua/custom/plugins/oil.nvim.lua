@@ -15,7 +15,6 @@ return {
         end,
       },
     }
-    vim.keymap.set('n', '<leader>ex', '<Cmd>echo "you\'re using oil now buddy!"<CR>')
     vim.keymap.set('n', '<leader>oo', '<Cmd>Oil<CR>', { desc = '[O]pen [O]il' })
   end,
 }
