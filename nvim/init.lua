@@ -91,7 +91,7 @@ vim.api.nvim_create_autocmd('TextYankPost', {
 
 -- Typescript overrides
 vim.api.nvim_create_autocmd('FileType', {
-  pattern = { 'typescript', 'typescriptreact', 'javascript', 'javascriptreact', 'json' },
+  pattern = { 'typescript', 'typescriptreact', 'javascript', 'javascriptreact', 'json', 'css' },
   callback = function()
     vim.opt_local.expandtab = true
     vim.opt_local.shiftwidth = 2
