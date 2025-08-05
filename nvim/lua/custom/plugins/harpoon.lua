@@ -34,14 +34,6 @@ return {
       harpoon:list():select(5)
     end, { desc = 'Select [H]arpoon 5' })
 
-    vim.keymap.set('n', '<leader>6', function()
-      harpoon:list():select(6)
-    end, { desc = 'Select [H]arpoon 6' })
-
-    vim.keymap.set('n', '<leader>7', function()
-      harpoon:list():select(7)
-    end, { desc = 'Select [H]arpoon 7' })
-
     vim.keymap.set('n', '<leader>hn', function()
       harpoon:list():next()
     end, { desc = 'Select [H]arpoon [N]ext' })
