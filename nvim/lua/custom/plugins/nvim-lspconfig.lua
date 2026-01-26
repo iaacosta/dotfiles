@@ -198,6 +198,8 @@ return {
       emmet_language_server = {
         filetypes = { 'html', 'javascript', 'javascriptreact', 'typescript', 'typescriptreact' },
       },
+
+      tailwindcss = {},
     }
 
     -- Ensure the servers and tools above are installed
@@ -233,5 +235,14 @@ return {
         end,
       },
     }
+
+    vim.lsp.config('tailwindcss', {
+      settings = {
+        tailwindCSS = {
+          classFunctions = { 'tv', 'cn' },
+        },
+      },
+    })
+
   end,
 }
