@@ -26,22 +26,6 @@ return {
         disable_keymaps = true,
       },
     },
-    -- {
-    --   'zbirenbaum/copilot.lua',
-    --   enabled = false,
-    --   dependencies = {
-    --     'giuxtaposition/blink-cmp-copilot',
-    --     enabled = false,
-    --     after = { 'copilot.lua' },
-    --     setup = function() end,
-    --   },
-    --   config = function()
-    --     require('copilot').setup {
-    --       suggestion = { enabled = false },
-    --       panel = { enabled = false },
-    --     }
-    --   end,
-    -- },
   },
   --- @module 'blink.cmp'
   --- @type blink.cmp.Config
