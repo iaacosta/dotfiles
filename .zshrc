@@ -24,11 +24,21 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   eval "$(/opt/homebrew/bin/brew shellenv)"
 fi
 
-# Node
-eval "$(nodenv init -)"
+# Node (nodenv)
+if [[ -d "$HOME/.nodenv" ]]; then
+  export PATH="$HOME/.nodenv/bin:$PATH"
+fi
+if command -v nodenv &> /dev/null; then
+  eval "$(nodenv init -)"
+fi
 
-# Ruby
-eval "$(rbenv init -)"
+# Ruby (rbenv)
+if [[ -d "$HOME/.rbenv" ]]; then
+  export PATH="$HOME/.rbenv/bin:$PATH"
+fi
+if command -v rbenv &> /dev/null; then
+  eval "$(rbenv init -)"
+fi
 
 # FZF
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
