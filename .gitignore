@@ -5,6 +5,7 @@
 !.gitignore
 !.gitconfig
 !.zshrc
+!setup.sh
 !ghostty/
 !ghostty/**
 !nvim/
