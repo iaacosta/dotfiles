@@ -20,7 +20,9 @@ zstyle ':bracketed-paste-magic' active-widgets '.self-*'
 zle_highlight+=(paste:none)
 
 # Brew
-eval "$(/opt/homebrew/bin/brew shellenv)"
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  eval "$(/opt/homebrew/bin/brew shellenv)"
+fi
 
 # Node
 eval "$(nodenv init -)"
@@ -39,10 +41,9 @@ export PATH="$PATH:$HOME/go/bin"
 export PATH="$PATH:$HOME/bin"
 
 # Sqlite
-export PATH="/opt/homebrew/opt/sqlite/bin:$PATH"
-
-# Postgres
-export PATH="/opt/homebrew/opt/postgresql@11/bin:$PATH"
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  export PATH="/opt/homebrew/opt/sqlite/bin:$PATH"
+fi
 
 # Custom configs
 ulimit -n 8192
