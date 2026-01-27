@@ -115,10 +115,6 @@ rtp:prepend(lazypath)
 
 require('lazy').setup({
   { import = 'custom.plugins' },
-  {
-    'ThePrimeagen/vim-be-good',
-    cmd = 'VimBeGood',
-  },
 }, {
   ui = {
     icons = vim.g.have_nerd_font and {} or {
