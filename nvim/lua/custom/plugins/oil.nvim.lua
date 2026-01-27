@@ -16,6 +16,5 @@ return {
       },
     }
     vim.keymap.set('n', '<leader>oo', '<Cmd>Oil<CR>', { desc = '[O]pen [O]il' })
-    vim.keymap.set('n', '<leader>bC', '<Cmd>:%bd|e#<CR>', { desc = '[B]uffer [C]lose all' })
   end,
 }
