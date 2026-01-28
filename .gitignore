@@ -12,3 +12,7 @@
 !nvim/**
 !tmux/
 !tmux/**
+!opencode/
+!opencode/opencode.jsonc
+!opencode/skill/
+!opencode/skill/**
