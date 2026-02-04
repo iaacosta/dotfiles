@@ -16,3 +16,5 @@
 !opencode/opencode.jsonc
 !opencode/skill/
 !opencode/skill/**
+!opencode/agents/
+!opencode/agents/**
