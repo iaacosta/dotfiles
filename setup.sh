@@ -5,7 +5,6 @@ OS="$(uname -s)"
 echo "=== Dotfiles Setup ==="
 echo ""
 
-# Symlinks (safe to run)
 ln -sf ~/.config/.zshrc ~/.zshrc
 ln -sf ~/.config/.gitconfig ~/.gitconfig
 ln -sf ~/.config/tmux/tmux.conf ~/.tmux.conf
@@ -62,7 +61,7 @@ echo ""
 
 echo "7. Install packages:"
 if [[ "$OS" == "Darwin" ]]; then
-  echo "   brew install fzf neovim direnv tmux go"
+  echo "   brew install fzf neovim direnv tmux go gh"
 else
   echo "   sudo apt install fzf direnv tmux golang-go fonts-noto-color-emoji"
   echo ""
