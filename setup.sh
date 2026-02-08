@@ -61,9 +61,9 @@ echo ""
 
 echo "7. Install packages:"
 if [[ "$OS" == "Darwin" ]]; then
-  echo "   brew install fzf neovim direnv tmux go gh"
+  echo "   brew install fzf neovim direnv tmux go gh ripgrep"
 else
-  echo "   sudo apt install fzf direnv tmux golang-go fonts-noto-color-emoji"
+  echo "   sudo apt install fzf direnv tmux golang-go gh ripgrep"
   echo ""
   echo "   # Neovim (apt version is outdated, use one of these):"
   echo "   # Option 1 - Download appimage:"
