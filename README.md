@@ -18,8 +18,8 @@ Then add the public key to GitHub: https://github.com/settings/keys
 ### 2. Clone This Repo
 
 ```bash
-git clone git@github.com:iaacosta/dotfiles.git ~/.config
-cd ~/.config
+git clone git@github.com:iaacosta/dotfiles.git ~/dotfiles
+cd ~/dotfiles
 ```
 
 ### 3. Run Setup

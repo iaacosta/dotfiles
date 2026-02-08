@@ -5,10 +5,20 @@ OS="$(uname -s)"
 echo "=== Dotfiles Setup ==="
 echo ""
 
-ln -sf ~/.config/.zshrc ~/.zshrc
-ln -sf ~/.config/.gitconfig ~/.gitconfig
-ln -sf ~/.config/tmux/tmux.conf ~/.tmux.conf
-echo "[done] Symlinked .zshrc, .gitconfig, and .tmux.conf"
+# Create .config directory if it doesn't exist
+mkdir -p ~/.config
+
+# Symlink dotfiles
+ln -sf ~/dotfiles/.zshrc ~/.zshrc
+ln -sf ~/dotfiles/.gitconfig ~/.gitconfig
+ln -sf ~/dotfiles/tmux/tmux.conf ~/.tmux.conf
+
+# Symlink config directories
+ln -sf ~/dotfiles/nvim ~/.config/nvim
+ln -sf ~/dotfiles/ghostty ~/.config/ghostty
+ln -sf ~/dotfiles/opencode ~/.config/opencode
+
+echo "[done] Symlinked dotfiles and config directories"
 echo ""
 
 echo "=== Manual steps ==="

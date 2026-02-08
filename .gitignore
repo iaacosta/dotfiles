@@ -1,21 +1,17 @@
-# ignore everything
-*
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
 
-# 
-!.gitignore
-!.gitconfig
-!.zshrc
-!setup.sh
-!ghostty/
-!ghostty/**
-!nvim/
-!nvim/**
-!tmux/
-!tmux/**
-!opencode/
-!opencode/opencode.jsonc
-!opencode/skill/
-!opencode/skill/**
-!opencode/agents/
-!opencode/agents/**
-!README.md
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Temporary files
+*.log
+*.tmp
