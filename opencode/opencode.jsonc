@@ -9,5 +9,12 @@
     "plan": {
       "model": "anthropic/claude-opus-4-6",
     },
+  },
+  "mcp": {
+    "linear": {
+      "type": "local",
+      "command": ["npx", "-y", "mcp-remote", "https://mcp.linear.app/sse"],
+      "enabled": true
+    }
   }
 }
