@@ -53,12 +53,10 @@ return {
         'snippets',
         'lazydev',
         'supermaven',
-        -- 'copilot',
       },
       providers = {
         lazydev = { module = 'lazydev.integrations.blink', score_offset = 100 },
         supermaven = { name = 'Supermaven', module = 'blink-cmp-supermaven', async = true },
-        -- copilot = { name = 'copilot', module = 'blink-cmp-copilot', score_offset = 10, async = true },
       },
     },
 
