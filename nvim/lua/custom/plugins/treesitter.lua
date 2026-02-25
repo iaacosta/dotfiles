@@ -6,6 +6,7 @@ return {
     build = ':TSUpdate',
     dependencies = {
       { 'nvim-treesitter/nvim-treesitter-context' },
+      { 'nvim-treesitter/nvim-treesitter-textobjects' },
     },
     config = function()
       require('nvim-treesitter.configs').setup {
@@ -25,6 +26,7 @@ return {
           'javascript',
           'typescript',
           'yaml',
+          'ruby',
         },
         auto_install = true,
         highlight = {
@@ -50,11 +52,5 @@ return {
         },
       }
     end,
-  },
-  {
-    'nvim-treesitter/nvim-treesitter-textobjects',
-    branch = 'master',
-    lazy = true,
-    dependencies = { 'nvim-treesitter/nvim-treesitter' },
   },
 }
