@@ -34,6 +34,9 @@ vim.o.signcolumn = 'yes'
 -- Decrease mapped sequence wait time
 vim.o.timeoutlen = 300
 
+-- Set colorcolumn to 120 characters
+vim.opt.colorcolumn = "120"
+
 -- Configure how new splits should be opened
 vim.o.splitright = true
 vim.o.splitbelow = true
