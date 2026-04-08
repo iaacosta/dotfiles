@@ -224,7 +224,12 @@ check_and_add_symlink() {
   fi
 }
 
-check_and_add_symlink "$HOME/dotfiles/.zshrc" "$HOME/.zshrc"
+if [[ -f "$HOME/.zshrc" ]] && [[ ! -L "$HOME/.zshrc" ]]; then
+  echo -e "  ${GREEN}✓${NC} ~/.zshrc (local stub already exists)"
+else
+  echo -e "  ${YELLOW}•${NC} Will create local stub: ~/.zshrc -> sources ~/dotfiles/.zshrc"
+  add_preview "zshrc_stub"
+fi
 check_and_add_symlink "$HOME/dotfiles/.gitconfig" "$HOME/.gitconfig"
 check_and_add_symlink "$HOME/dotfiles/tmux/tmux.conf" "$HOME/.tmux.conf"
 check_and_add_symlink "$HOME/dotfiles/nvim" "$HOME/.config/nvim"
@@ -434,13 +439,44 @@ if [[ " ${PREVIEW_ITEMS[@]} " =~ " tpm " ]]; then
   echo ""
 fi
 
-# 11. Symlinks
+# 11a. Local ~/.zshrc stub
+#
+# We deliberately do NOT symlink ~/.zshrc into the dotfiles repo. Tools like
+# Homebrew, SDKMAN, rustup, nvm, bun, etc. love to append lines to ~/.zshrc on
+# install, and if it were a symlink those appends would dirty the dotfiles repo
+# (and leak machine-specific PATH entries into shared config).
+#
+# Instead, ~/.zshrc is a tiny machine-local stub that sources the shared
+# ~/dotfiles/.zshrc. Anything machine-specific lives in the local stub.
+if [[ " ${PREVIEW_ITEMS[@]} " =~ " zshrc_stub " ]]; then
+  echo -e "${BLUE}Creating local ~/.zshrc stub...${NC}"
+
+  if [[ -e "$HOME/.zshrc" ]] || [[ -L "$HOME/.zshrc" ]]; then
+    BACKUP="$HOME/.zshrc.backup.$(date +%Y%m%d%H%M%S)"
+    mv "$HOME/.zshrc" "$BACKUP"
+    echo -e "  ${YELLOW}•${NC} Existing ~/.zshrc moved to $BACKUP"
+  fi
+
+  cat > "$HOME/.zshrc" <<'EOF'
+# Machine-local zshrc.
+#
+# Shared shell config lives in ~/dotfiles/.zshrc and is sourced below.
+# Put anything machine-specific (PATH additions from brew, sdkman, nvm,
+# bun, android sdk, etc.) AFTER the source line. Installers that append
+# to ~/.zshrc will land here and won't dirty the dotfiles repo.
+source "$HOME/dotfiles/.zshrc"
+EOF
+
+  echo -e "${GREEN}✓${NC} Created ~/.zshrc stub"
+  echo ""
+fi
+
+# 11b. Symlinks
 if [[ " ${PREVIEW_ITEMS[@]} " =~ " symlink_ " ]]; then
   echo -e "${BLUE}Creating symlinks...${NC}"
   
   mkdir -p ~/.config
   
-  ln -sf ~/dotfiles/.zshrc ~/.zshrc
   ln -sf ~/dotfiles/.gitconfig ~/.gitconfig
   ln -sf ~/dotfiles/tmux/tmux.conf ~/.tmux.conf
   ln -sf ~/dotfiles/nvim ~/.config/nvim
