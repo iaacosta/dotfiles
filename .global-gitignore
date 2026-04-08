@@ -1,0 +1,5 @@
+.DS_Store
+pr_description.md
+.envrc
+dev-scripts/
+dev-scripts/*

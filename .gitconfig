@@ -19,4 +19,4 @@
 [gpg]
 	format = ssh
 [core]
-	excludesfile = ~/.gitignore
+	excludesfile = ~/dotfiles/.global-gitignore
