@@ -6,7 +6,6 @@ return {
     build = ':TSUpdate',
     dependencies = {
       { 'nvim-treesitter/nvim-treesitter-context' },
-      { 'nvim-treesitter/nvim-treesitter-textobjects' },
     },
     config = function()
       require('nvim-treesitter.configs').setup {
@@ -34,23 +33,37 @@ return {
           additional_vim_regex_highlighting = { 'ruby' },
         },
         indent = { enable = true },
-        textobjects = {
-          select = {
-            enable = true,
-            lookahead = true,
-            keymaps = {
-              ['af'] = { query = '@function.outer', desc = 'around function' },
-              ['if'] = { query = '@function.inner', desc = 'inside function' },
-              ['ac'] = { query = '@class.outer', desc = 'around class' },
-              ['ic'] = { query = '@class.inner', desc = 'inside class' },
-              ['ar'] = { query = '@block.outer', desc = 'around block' },
-              ['ir'] = { query = '@block.inner', desc = 'inside block' },
-              ['az'] = { query = '@statement.outer', desc = 'around statement' },
-              ['iz'] = { query = '@statement.inner', desc = 'inside statement' },
-            },
-          },
-        },
       }
+    end,
+  },
+  {
+    'nvim-treesitter/nvim-treesitter-textobjects',
+    branch = 'main',
+    init = function()
+      vim.g.no_plugin_maps = true
+    end,
+    config = function()
+      require('nvim-treesitter-textobjects').setup {
+        select = { lookahead = true },
+      }
+
+      local selectors = {
+        { 'af', '@function.outer' },
+        { 'if', '@function.inner' },
+        { 'ac', '@class.outer' },
+        { 'ic', '@class.inner' },
+        { 'ar', '@block.outer' },
+        { 'ir', '@block.inner' },
+        { 'az', '@statement.outer' },
+        { 'iz', '@statement.inner' },
+      }
+
+      for _, selector in ipairs(selectors) do
+        local mapping, builtin = unpack(selector)
+        vim.keymap.set({ 'x', 'o' }, mapping, function()
+          require('nvim-treesitter-textobjects.select').select_textobject(builtin, 'textobjects')
+        end)
+      end
     end,
   },
 }
