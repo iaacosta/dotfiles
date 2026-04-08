@@ -15,5 +15,6 @@
       "command": ["npx", "-y", "mcp-remote", "https://mcp.linear.app/sse"],
       "enabled": true
     }
-  }
+  },
+  "plugin": ["opencode-claude-auth"]
 }
