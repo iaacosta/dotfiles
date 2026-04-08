@@ -65,3 +65,6 @@ alias glo="git log --oneline -n 20"
 if [[ -d "$HOME/.opencode" ]]; then
   export PATH=$HOME/.opencode/bin:$PATH
 fi
+
+# s P o N g E   c A s E
+export PATH=$PATH:$HOME/dotfiles/spongecase/bin
