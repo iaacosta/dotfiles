@@ -4,12 +4,12 @@ return {
   cmd = { 'ConformInfo' },
   keys = {
     {
-      '<leader>f',
+      '<leader>ff',
       function()
         require('conform').format { async = true, lsp_format = 'fallback' }
       end,
       mode = '',
-      desc = '[F]ormat buffer',
+      desc = '[F]ormat [F]ile',
     },
   },
   opts = {
@@ -20,6 +20,7 @@ return {
       javascriptreact = { 'eslint_d' },
       typescript = { 'eslint_d' },
       typescriptreact = { 'eslint_d' },
+      json = { 'prettierd' },
       vue = { 'eslint_d' },
     },
   },
