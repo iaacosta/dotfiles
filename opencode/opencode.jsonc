@@ -4,7 +4,7 @@
   "autoupdate": true,
   "agent": {
     "build": {
-      "model": "anthropic/claude-sonnet-4-6"
+      "model": "anthropic/claude-opus-4-6"
     },
     "plan": {
       "model": "anthropic/claude-opus-4-6",
