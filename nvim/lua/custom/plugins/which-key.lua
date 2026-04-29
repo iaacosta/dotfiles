@@ -49,7 +49,11 @@ return {
       { '<leader>o', group = '[O]pen' },
       { '<leader>g', group = 'Fu[G]itive' },
       { '<leader>l', group = '[L]int' },
-      { '<leader>h', group = '[H]arpoon' },
+      { '<leader>h', group = '[H]unks' },
+      { '<leader>c', group = '[C]ode' },
+      { '<leader>d', group = '[D]iff' },
+      { '<leader>b', group = '[B]uffer' },
+      { '<leader>f', group = '[F]ormat' },
     },
   },
 }
