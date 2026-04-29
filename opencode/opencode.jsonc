@@ -16,5 +16,5 @@
       "enabled": true
     }
   },
-  "plugin": ["opencode-claude-auth"]
+  "plugin": ["opencode-claude-auth@latest"]
 }
