@@ -1,7 +1,6 @@
 ---
 description: Reviews current branch changes like a Staff Engineer PR reviewer
 mode: subagent
-model: anthropic/claude-opus-4-6
 permission:
   edit: deny
   bash:
