@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  echo "Usage: tmux-workspace <directory>"
+  echo ""
+  echo "Creates a tmux session named after the directory with 4 windows:"
+  echo "  1. shell    - clean shell"
+  echo "  2. nvim     - opens nvim ."
+  echo "  3. opencode - opens opencode ."
+  echo "  4. bash     - 3 panes (1 top full-width, 2 bottom half-width)"
+  exit 1
+}
+
+if [[ $# -ne 1 || -z "$1" ]]; then
+  usage
+fi
+
+# Resolve to absolute path
+directory="$(cd "$1" && pwd)"
+session_name="$(basename "$directory")"
+
+# Check if session already exists
+if tmux has-session -t "$session_name" 2>/dev/null; then
+  echo "Session '$session_name' already exists. Attaching..."
+  exec tmux attach-session -t "$session_name"
+fi
+
+# Window 1: clean shell
+tmux new-session -d -s "$session_name" -c "$directory" -n "shell"
+
+# Window 2: nvim
+tmux new-window -t "$session_name" -c "$directory" -n "nvim"
+tmux send-keys -t "$session_name:nvim" "nvim ." Enter
+
+# Window 3: opencode
+tmux new-window -t "$session_name" -c "$directory" -n "opencode"
+tmux send-keys -t "$session_name:opencode" "opencode ." Enter
+
+# Window 4: bash with 3 panes (1 top full-width, 2 bottom half-width)
+tmux new-window -t "$session_name" -c "$directory" -n "bash"
+tmux split-window -t "$session_name:bash" -v -c "$directory"
+tmux split-window -t "$session_name:bash" -h -c "$directory"
+tmux select-pane -t "$session_name:bash.0"
+
+# Select window 2 (nvim)
+tmux select-window -t "$session_name:nvim"
+
+# Attach to the session
+if [[ -n "${TMUX:-}" ]]; then
+  tmux switch-client -t "$session_name"
+else
+  tmux attach-session -t "$session_name"
+fi
