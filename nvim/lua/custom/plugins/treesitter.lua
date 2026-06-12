@@ -26,6 +26,7 @@ return {
           'typescript',
           'yaml',
           'ruby',
+          'vue',
         },
         auto_install = true,
         highlight = {

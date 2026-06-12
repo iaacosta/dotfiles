@@ -165,9 +165,27 @@ return {
     --  - capabilities (table): Override fields in capabilities. Can be used to disable certain LSP features.
     --  - settings (table): Override the default settings passed when initializing the server.
     --        For example, to see the options for `lua_ls`, you could go to: https://luals.github.io/wiki/settings/
+    -- Vue 3.0+ "Hybrid Mode" setup:
+    --   - `vue_ls` handles Vue-specific features (templates, <script setup>, etc.)
+    --   - `ts_ls` handles TypeScript/JavaScript inside .vue files via the @vue/typescript-plugin
+    -- The plugin lives inside the vue-language-server package installed by mason.
+    local vue_language_server_path = vim.fn.expand '$MASON/packages/vue-language-server/node_modules/@vue/language-server'
+
     local servers = {
       gopls = {},
-      ts_ls = {},
+      ts_ls = {
+        init_options = {
+          plugins = {
+            {
+              name = '@vue/typescript-plugin',
+              location = vue_language_server_path,
+              languages = { 'vue' },
+            },
+          },
+        },
+        filetypes = { 'javascript', 'javascriptreact', 'typescript', 'typescriptreact', 'vue' },
+      },
+      vue_ls = {},
       lua_ls = {
         settings = {
           Lua = {
@@ -178,7 +196,7 @@ return {
         },
       },
       emmet_language_server = {
-        filetypes = { 'html', 'javascript', 'javascriptreact', 'typescript', 'typescriptreact' },
+        filetypes = { 'html', 'javascript', 'javascriptreact', 'typescript', 'typescriptreact', 'vue' },
       },
 
       tailwindcss = {},
@@ -207,17 +225,16 @@ return {
     require('mason-lspconfig').setup {
       ensure_installed = {}, -- explicitly set to an empty table (Kickstart populates installs via mason-tool-installer)
       automatic_installation = false,
-      handlers = {
-        function(server_name)
-          local server = servers[server_name] or {}
-          -- This handles overriding only values explicitly passed
-          -- by the server configuration above. Useful when disabling
-          -- certain features of an LSP (for example, turning off formatting for ts_ls)
-          server.capabilities = vim.tbl_deep_extend('force', {}, capabilities, server.capabilities or {})
-          require('lspconfig')[server_name].setup(server)
-        end,
-      },
+      automatic_enable = false, -- we enable explicitly below via vim.lsp.enable
     }
+
+    -- Apply per-server config and enable each server using the native
+    -- vim.lsp.config / vim.lsp.enable API (Neovim 0.11+). This replaces the
+    -- removed `handlers` field of mason-lspconfig v2.x.
+    for server_name, server in pairs(servers) do
+      server.capabilities = vim.tbl_deep_extend('force', {}, capabilities, server.capabilities or {})
+      vim.lsp.config(server_name, server)
+    end
 
     vim.lsp.config('tailwindcss', {
       settings = {
@@ -226,5 +243,7 @@ return {
         },
       },
     })
+
+    vim.lsp.enable(vim.tbl_keys(servers))
   end,
 }
