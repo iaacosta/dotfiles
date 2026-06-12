@@ -1,3 +1,5 @@
+local eslint = require 'custom.util.eslint'
+
 return {
   'stevearc/conform.nvim',
   event = { 'BufWritePre' },
@@ -22,6 +24,18 @@ return {
       typescriptreact = { 'eslint_d' },
       json = { 'prettierd' },
       vue = { 'eslint_d' },
+    },
+    -- Make eslint_d fugitive-aware: fix the staged buffer content but resolve
+    -- config + ignore rules against the real work-tree path.
+    formatters = {
+      eslint_d = {
+        args = function(_, ctx)
+          return { '--fix-to-stdout', '--stdin', '--stdin-filename', eslint.real_path(ctx.buf) }
+        end,
+        cwd = function(_, ctx)
+          return eslint.config_root(ctx.buf)
+        end,
+      },
     },
   },
 }
