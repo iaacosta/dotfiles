@@ -20,8 +20,8 @@ fi
 directory="$(cd "$1" && pwd)"
 session_name="$(basename "$directory")"
 
-# Check if session already exists
-if tmux has-session -t "$session_name" 2>/dev/null; then
+# Check if session already exists (exact match to avoid tmux prefix matching)
+if tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -qx "$session_name"; then
   echo "Session '$session_name' already exists. Attaching..."
   exec tmux attach-session -t "$session_name"
 fi
