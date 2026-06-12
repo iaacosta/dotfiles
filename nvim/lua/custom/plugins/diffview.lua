@@ -11,9 +11,22 @@ return {
     vim.keymap.set('n', '<leader>dh', function()
       diffview.file_history(nil, {})
     end, { desc = '[D]iff file [H]istory' })
+    local function branch_history(branch)
+      diffview.file_history(nil, { '--range=' .. branch .. '...HEAD', '--right-only', '--no-merges', '--reverse' })
+    end
     vim.keymap.set('n', '<leader>db', function()
-      diffview.file_history(nil, { '--range=origin/HEAD...HEAD', '--right-only', '--no-merges', '--reverse' })
-    end, { desc = '[D]iff [B]ranch commits' })
+      branch_history 'origin/HEAD'
+    end, { desc = '[D]iff [B]ranch commits (origin/HEAD)' })
+    local last_branch = nil
+    vim.keymap.set('n', '<leader>dB', function()
+      vim.ui.input({ prompt = 'Base branch: ', default = last_branch or '' }, function(branch)
+        if not branch or branch == '' then
+          return
+        end
+        last_branch = branch
+        branch_history(branch)
+      end)
+    end, { desc = '[D]iff [B]ranch commits (prompt)' })
     vim.keymap.set('n', '<leader>df', function()
       diffview.file_history(nil, { '%' })
     end, { desc = '[D]iff [F]ile history' })
@@ -31,5 +44,12 @@ return {
     vim.keymap.set('n', '<leader>dt', '<cmd>DiffviewToggleFiles<CR>', { desc = '[D]iff [T]oggle files' })
     vim.keymap.set('n', '<leader>de', '<cmd>DiffviewFocusFiles<CR>', { desc = '[D]iff focus fil[E]s' })
     vim.keymap.set('n', '<leader>dr', '<cmd>DiffviewRefresh<CR>', { desc = '[D]iff [R]efresh' })
+
+    -- Misc
+    vim.keymap.set('n', '<leader>do', function()
+      local buf = vim.api.nvim_get_current_buf()
+      vim.cmd '1tabnext'
+      vim.cmd('buffer ' .. buf)
+    end, { desc = 'Open diff buffer in working tab' })
   end,
 }
