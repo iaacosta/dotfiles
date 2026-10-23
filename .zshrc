@@ -61,11 +61,6 @@ alias vim=nvim
 export EDITOR=nvim
 alias glo="git log --oneline -n 20"
 
-# opencode
-if [[ -d "$HOME/.opencode" ]]; then
-  export PATH=$HOME/.opencode/bin:$PATH
-fi
-
 # Tmux
 export PATH=$PATH:$HOME/dotfiles/tmux/bin
 

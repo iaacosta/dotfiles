@@ -234,7 +234,6 @@ check_and_add_symlink "$HOME/dotfiles/.gitconfig" "$HOME/.gitconfig"
 check_and_add_symlink "$HOME/dotfiles/tmux/tmux.conf" "$HOME/.tmux.conf"
 check_and_add_symlink "$HOME/dotfiles/nvim" "$HOME/.config/nvim"
 check_and_add_symlink "$HOME/dotfiles/ghostty" "$HOME/.config/ghostty"
-check_and_add_symlink "$HOME/dotfiles/opencode" "$HOME/.config/opencode"
 echo ""
 
 # === CONFIRMATION ===
@@ -481,7 +480,6 @@ if [[ " ${PREVIEW_ITEMS[@]} " =~ " symlink_ " ]]; then
   ln -sf ~/dotfiles/tmux/tmux.conf ~/.tmux.conf
   ln -sf ~/dotfiles/nvim ~/.config/nvim
   ln -sf ~/dotfiles/ghostty ~/.config/ghostty
-  ln -sf ~/dotfiles/opencode ~/.config/opencode
   ln -sf ~/dotfiles/.global-gitignore ~/.gitignore
   
   echo -e "${GREEN}✓${NC} Symlinks created"
