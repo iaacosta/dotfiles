@@ -3,3 +3,6 @@ pr_description.md
 .envrc
 dev-scripts/
 dev-scripts/*
+
+pr_descriptions/
+pr_descriptions/*
