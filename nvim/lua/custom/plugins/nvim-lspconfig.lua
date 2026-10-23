@@ -248,6 +248,34 @@ return {
       },
     })
 
+    -- Neovim only refuses to attach a language server when 'buftype' is set,
+    -- and fugitive leaves its blob buffers at buftype='' (fugitive#BufReadCmd
+    -- never sets it). Servers therefore get a didOpen carrying a fugitive://
+    -- URI, which gopls rejects outright:
+    --   -32700: JSON RPC parse error: DocumentURI scheme is not 'file'
+    -- Declining to call on_dir stops the client from ever starting. Guarding
+    -- here rather than via 'buftype' keeps conform/nvim-lint working on stage
+    -- buffers.
+    local function has_url_scheme(bufnr)
+      return vim.api.nvim_buf_get_name(bufnr):match '^%a[%w+.%-]*://' ~= nil
+    end
+
+    for server_name in pairs(servers) do
+      local default_root_dir = vim.lsp.config[server_name].root_dir
+      vim.lsp.config(server_name, {
+        root_dir = function(bufnr, on_dir)
+          if has_url_scheme(bufnr) then
+            return
+          end
+          if type(default_root_dir) == 'function' then
+            return default_root_dir(bufnr, on_dir)
+          end
+          -- nil lets vim.lsp.start() resolve root_markers natively.
+          on_dir(default_root_dir)
+        end,
+      })
+    end
+
     vim.lsp.enable(vim.tbl_keys(servers))
   end,
 }
