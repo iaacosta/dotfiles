@@ -165,6 +165,7 @@ local function open_editor(title, initial, on_save)
 
   local win = vim.api.nvim_open_win(buf, true, {
     relative = 'cursor',
+    style = 'minimal',
     row = 1,
     col = 0,
     width = math.min(80, vim.o.columns - 4),
