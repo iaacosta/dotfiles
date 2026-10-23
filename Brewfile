@@ -14,6 +14,7 @@ brew "tmux"
 brew "go"
 brew "gh"
 brew "ripgrep"
+brew "tree-sitter-cli"
 
 # Version managers
 brew "nodenv"
