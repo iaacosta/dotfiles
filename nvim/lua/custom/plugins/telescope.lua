@@ -52,7 +52,13 @@ return {
       --     i = { ['<c-enter>'] = 'to_fuzzy_refine' },
       --   },
       -- },
-      -- pickers = {}
+      pickers = {
+        find_files = {
+          -- Second pass re-adds `dev-scripts/` even though it is gitignored.
+          -- stderr is silenced so projects without that directory don't error.
+          find_command = { 'sh', '-c', 'rg --files --color never; rg --files --color never --no-ignore-vcs dev-scripts 2>/dev/null' },
+        },
+      },
       extensions = {
         ['ui-select'] = {
           require('telescope.themes').get_dropdown(),
