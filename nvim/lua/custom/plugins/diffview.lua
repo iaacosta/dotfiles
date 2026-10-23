@@ -18,8 +18,25 @@ return {
       branch_history 'origin/HEAD'
     end, { desc = '[D]iff [B]ranch commits (origin/HEAD)' })
     local last_branch = nil
+    -- Completion for the base branch prompt: <Tab> cycles local and remote branches
+    -- containing the typed text. Global because 'customlist' needs a v:lua function.
+    function _G.diffview_branch_complete(arg_lead)
+      local matches = {}
+      for _, ref in ipairs(vim.fn.systemlist { 'git', 'for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes' }) do
+        -- Skip remote HEAD symrefs, which shorten to a bare "origin"
+        local name = not ref:match '/HEAD$' and ref:gsub('^refs/heads/', ''):gsub('^refs/remotes/', '')
+        if name and name:find(arg_lead, 1, true) then
+          table.insert(matches, name)
+        end
+      end
+      return matches
+    end
     vim.keymap.set('n', '<leader>dB', function()
-      vim.ui.input({ prompt = 'Base branch: ', default = last_branch or '' }, function(branch)
+      vim.ui.input({
+        prompt = 'Base branch: ',
+        default = last_branch or '',
+        completion = 'customlist,v:lua.diffview_branch_complete',
+      }, function(branch)
         if not branch or branch == '' then
           return
         end
