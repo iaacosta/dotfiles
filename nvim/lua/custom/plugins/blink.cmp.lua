@@ -12,6 +12,14 @@ return {
         },
       },
     },
+    -- No cmp sources use it, but supermaven warns on every startup unless
+    -- `require('cmp')` succeeds, which lazy-loads this shim
+    {
+      'saghen/blink.compat',
+      version = '2.*',
+      lazy = true,
+      opts = {},
+    },
     {
       'supermaven-inc/supermaven-nvim',
       dependencies = { 'huijiro/blink-cmp-supermaven' },
