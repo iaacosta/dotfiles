@@ -34,14 +34,33 @@ Follow the manual steps printed by the script.
 
 - **Shell**: zsh with Oh My Zsh, autosuggestions, and syntax highlighting
 - **Editor**: neovim with Lazy plugin manager
-- **Tools**: fzf, ripgrep, direnv, tmux, gh
+- **Tools**: fzf, ripgrep, direnv, tmux (with TPM and a custom `tmux-workspace` launcher), gh
 - **Languages**: Node.js (nodenv), Ruby (rbenv), Go
 - **Terminal**: Ghostty with 0xProto Nerd Font
+- **AI**: Claude Code configuration (agents, commands, skills)
+- **Fun**: spongecase — a Go CLI tool for SpOnGeBoB-cAsE text
 
 ## Platform Support
 
 - macOS (via Homebrew)
 - Linux/WSL (via apt)
+
+## Symlinks
+
+`setup.sh` creates the following symlinks:
+
+| Target                          | Link                    |
+| ------------------------------- | ----------------------- |
+| `~/dotfiles/.gitconfig`         | `~/.gitconfig`          |
+| `~/dotfiles/.global-gitignore`  | `~/.gitignore`          |
+| `~/dotfiles/tmux/tmux.conf`     | `~/.tmux.conf`          |
+| `~/dotfiles/nvim`               | `~/.config/nvim`        |
+| `~/dotfiles/ghostty`            | `~/.config/ghostty`     |
+| `~/dotfiles/claude/agents`      | `~/.claude/agents`      |
+| `~/dotfiles/claude/commands`    | `~/.claude/commands`    |
+| `~/dotfiles/claude/skills`      | `~/.claude/skills`      |
+
+`~/.zshrc` is **not** symlinked — see below for why.
 
 ## How `.zshrc` Works
 
@@ -80,3 +99,13 @@ stub and the dotfiles repo stays clean.
 `setup.sh` creates the stub automatically the first time you run it.
 If a `~/.zshrc` already exists at that point, it is moved aside to
 `~/.zshrc.backup.<timestamp>` before the stub is written.
+
+## Custom Scripts on PATH
+
+The shared `.zshrc` adds two repo directories to `PATH`:
+
+- **`tmux/bin/`** — contains `tmux-workspace`, a launcher that creates a
+  tmux session with a 4-window layout (shell, nvim, claude, multi-pane
+  bash). Naming it `tmux-workspace` means tmux auto-discovers it as
+  `tmux workspace` via its subcommand convention.
+- **`spongecase/bin/`** — a Go CLI that converts text to SpOnGeBoB cAsE.
