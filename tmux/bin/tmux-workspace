@@ -2,15 +2,24 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: tmux-workspace <directory>"
+  echo "Usage: tmux-workspace [-d] <directory>"
   echo ""
   echo "Creates a tmux session named after the directory with 4 windows:"
   echo "  1. shell    - clean shell"
   echo "  2. nvim     - opens nvim ."
   echo "  3. claude   - opens claude"
   echo "  4. bash     - 3 panes (1 top full-width, 2 bottom half-width)"
+  echo ""
+  echo "Options:"
+  echo "  -d    create the session detached (don't attach/switch to it)"
   exit 1
 }
+
+detach=false
+if [[ "${1:-}" == "-d" ]]; then
+  detach=true
+  shift
+fi
 
 if [[ $# -ne 1 || -z "$1" ]]; then
   usage
@@ -22,6 +31,10 @@ session_name="$(basename "$directory")"
 
 # Check if session already exists (exact match to avoid tmux prefix matching)
 if tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -qx "$session_name"; then
+  if [[ "$detach" == true ]]; then
+    echo "Session '$session_name' already exists."
+    exit 0
+  fi
   echo "Session '$session_name' already exists. Attaching..."
   exec tmux attach-session -t "$session_name"
 fi
@@ -46,7 +59,12 @@ tmux select-pane -t "$session_name:bash.0"
 # Select window 2 (nvim)
 tmux select-window -t "$session_name:nvim"
 
-# Attach to the session
+# Attach to the session unless running detached
+if [[ "$detach" == true ]]; then
+  echo "Session '$session_name' created (detached)."
+  exit 0
+fi
+
 if [[ -n "${TMUX:-}" ]]; then
   tmux switch-client -t "$session_name"
 else
