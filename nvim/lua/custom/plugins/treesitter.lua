@@ -1,40 +1,66 @@
 return {
   {
     'nvim-treesitter/nvim-treesitter',
-    branch = 'master',
+    branch = 'main',
     lazy = false,
     build = ':TSUpdate',
     dependencies = {
       { 'nvim-treesitter/nvim-treesitter-context' },
     },
     config = function()
-      require('nvim-treesitter.configs').setup {
-        ensure_installed = {
-          'bash',
-          'c',
-          'diff',
-          'html',
-          'lua',
-          'luadoc',
-          'markdown',
-          'markdown_inline',
-          'query',
-          'vim',
-          'vimdoc',
-          'go',
-          'javascript',
-          'typescript',
-          'yaml',
-          'ruby',
-          'vue',
-        },
-        auto_install = true,
-        highlight = {
-          enable = true,
-          additional_vim_regex_highlighting = { 'ruby' },
-        },
-        indent = { enable = true },
+      local ts = require 'nvim-treesitter'
+      ts.install {
+        'bash',
+        'c',
+        'diff',
+        'html',
+        'lua',
+        'luadoc',
+        'markdown',
+        'markdown_inline',
+        'query',
+        'vim',
+        'vimdoc',
+        'go',
+        'javascript',
+        'typescript',
+        'yaml',
+        'ruby',
+        'vue',
       }
+
+      -- Languages that also keep regex highlighting on top of treesitter
+      local regex_highlighting = { ruby = true }
+
+      local function attach(buf, lang)
+        if not vim.api.nvim_buf_is_valid(buf) or not pcall(vim.treesitter.start, buf, lang) then
+          return
+        end
+        vim.bo[buf].indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"
+        if regex_highlighting[lang] then
+          vim.bo[buf].syntax = 'ON'
+        end
+      end
+
+      vim.api.nvim_create_autocmd('FileType', {
+        group = vim.api.nvim_create_augroup('custom-treesitter', { clear = true }),
+        callback = function(args)
+          local lang = vim.treesitter.language.get_lang(args.match)
+          if not lang then
+            return
+          end
+          if vim.tbl_contains(ts.get_installed 'parsers', lang) then
+            attach(args.buf, lang)
+          elseif vim.tbl_contains(ts.get_available(), lang) then
+            -- Install missing parsers on first use
+            ts.install(lang):await(function()
+              vim.schedule(function()
+                attach(args.buf, lang)
+              end)
+            end)
+          end
+        end,
+      })
     end,
   },
   {
