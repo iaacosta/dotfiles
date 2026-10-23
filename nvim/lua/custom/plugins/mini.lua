@@ -5,6 +5,11 @@ return {
 
     require('mini.surround').setup()
 
+    -- Single icon provider; the mock serves plugins that expect nvim-web-devicons
+    -- (telescope, diffview)
+    require('mini.icons').setup()
+    MiniIcons.mock_nvim_web_devicons()
+
     local statusline = require 'mini.statusline'
     statusline.setup {
       use_icons = vim.g.have_nerd_font,
