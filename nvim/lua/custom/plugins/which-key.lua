@@ -54,6 +54,7 @@ return {
       { '<leader>d', group = '[D]iff' },
       { '<leader>b', group = '[B]uffer' },
       { '<leader>f', group = '[F]ormat' },
+      { '<leader>r', group = '[R]eview' },
     },
   },
 }
