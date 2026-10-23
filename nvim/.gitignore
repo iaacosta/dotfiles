@@ -1,6 +1,5 @@
 .netrwhist
 tags
-test.sh
 
 spell/
 
@@ -8,4 +7,3 @@ lazy/
 blink/
 mason/
 telescope_history
-harpoon/
