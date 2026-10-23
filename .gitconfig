@@ -20,3 +20,5 @@
 	format = ssh
 [core]
 	excludesfile = ~/dotfiles/.global-gitignore
+[rebase]
+	updateRefs = false
