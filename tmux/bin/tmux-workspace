@@ -7,7 +7,7 @@ usage() {
   echo "Creates a tmux session named after the directory with 4 windows:"
   echo "  1. shell    - clean shell"
   echo "  2. nvim     - opens nvim ."
-  echo "  3. opencode - opens opencode ."
+  echo "  3. claude   - opens claude"
   echo "  4. bash     - 3 panes (1 top full-width, 2 bottom half-width)"
   exit 1
 }
@@ -33,9 +33,9 @@ tmux new-session -d -s "$session_name" -c "$directory" -n "shell"
 tmux new-window -t "$session_name" -c "$directory" -n "nvim"
 tmux send-keys -t "$session_name:nvim" "nvim ." Enter
 
-# Window 3: opencode
-tmux new-window -t "$session_name" -c "$directory" -n "opencode"
-tmux send-keys -t "$session_name:opencode" "opencode ." Enter
+# Window 3: claude
+tmux new-window -t "$session_name" -c "$directory" -n "claude"
+tmux send-keys -t "$session_name:claude" "claude" Enter
 
 # Window 4: bash with 3 panes (1 top full-width, 2 bottom half-width)
 tmux new-window -t "$session_name" -c "$directory" -n "bash"
