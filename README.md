@@ -33,7 +33,7 @@ Follow the manual steps printed by the script.
 ## What's Included
 
 - **Shell**: zsh with Oh My Zsh, autosuggestions, and syntax highlighting
-- **Editor**: neovim with Lazy plugin manager
+- **Editor**: neovim (0.12+) with Lazy plugin manager
 - **Tools**: fzf, ripgrep, direnv, tmux (with TPM and a custom `tmux-workspace` launcher), gh
 - **Languages**: Node.js (nodenv), Ruby (rbenv), Go
 - **Terminal**: Ghostty with 0xProto Nerd Font
