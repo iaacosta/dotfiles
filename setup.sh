@@ -234,6 +234,9 @@ check_and_add_symlink "$HOME/dotfiles/.gitconfig" "$HOME/.gitconfig"
 check_and_add_symlink "$HOME/dotfiles/tmux/tmux.conf" "$HOME/.tmux.conf"
 check_and_add_symlink "$HOME/dotfiles/nvim" "$HOME/.config/nvim"
 check_and_add_symlink "$HOME/dotfiles/ghostty" "$HOME/.config/ghostty"
+check_and_add_symlink "$HOME/dotfiles/claude/agents" "$HOME/.claude/agents"
+check_and_add_symlink "$HOME/dotfiles/claude/commands" "$HOME/.claude/commands"
+check_and_add_symlink "$HOME/dotfiles/claude/skills" "$HOME/.claude/skills"
 echo ""
 
 # === CONFIRMATION ===
@@ -475,11 +478,15 @@ if [[ " ${PREVIEW_ITEMS[@]} " =~ " symlink_ " ]]; then
   echo -e "${BLUE}Creating symlinks...${NC}"
   
   mkdir -p ~/.config
-  
+  mkdir -p ~/.claude
+
   ln -sf ~/dotfiles/.gitconfig ~/.gitconfig
   ln -sf ~/dotfiles/tmux/tmux.conf ~/.tmux.conf
   ln -sf ~/dotfiles/nvim ~/.config/nvim
   ln -sf ~/dotfiles/ghostty ~/.config/ghostty
+  ln -sfn ~/dotfiles/claude/agents ~/.claude/agents
+  ln -sfn ~/dotfiles/claude/commands ~/.claude/commands
+  ln -sfn ~/dotfiles/claude/skills ~/.claude/skills
   ln -sf ~/dotfiles/.global-gitignore ~/.gitignore
   
   echo -e "${GREEN}✓${NC} Symlinks created"
