@@ -186,7 +186,9 @@ end
 
 -- Comment editor -------------------------------------------------------------
 
-local function open_editor(title, initial, on_save)
+-- Calls on_save with the trimmed body; an empty body is only passed through with
+-- `allow_empty`, so callers can treat it as "remove"
+local function open_editor(title, initial, on_save, allow_empty)
   local buf = vim.api.nvim_create_buf(false, true)
   vim.bo[buf].buftype = 'acwrite'
   vim.bo[buf].bufhidden = 'wipe'
@@ -226,7 +228,7 @@ local function open_editor(title, initial, on_save)
     vim.bo[buf].modified = false
     -- Deferred so `:wq` can close the float itself instead of the window below it
     vim.schedule(close)
-    if body ~= '' then
+    if body ~= '' or allow_empty then
       on_save(body)
     end
   end
@@ -364,6 +366,18 @@ function M.delete()
   end)
 end
 
+-- Review-level comment for feedback that doesn't belong to specific lines
+function M.note()
+  if not require_active() then
+    return
+  end
+  open_editor('General comment', state.review.note or '', function(body)
+    state.review.note = body ~= '' and body or nil
+    persist()
+    vim.cmd 'redrawstatus!'
+  end, true)
+end
+
 function M.list()
   if not require_active() then
     return
@@ -397,6 +411,9 @@ function M.export()
     '',
     ('Branch `%s` · %d comments'):format(state.review.branch, #state.review.comments),
   }
+  if state.review.note then
+    vim.list_extend(out, { '', '## General', '', state.review.note })
+  end
   for _, key in ipairs(order) do
     local group = groups[key]
     table.sort(group, function(a, b)
@@ -464,7 +481,7 @@ function M.copy()
   if not require_active() then
     return
   end
-  if #state.review.comments == 0 then
+  if #state.review.comments == 0 and not state.review.note then
     notify('No comments to copy yet', vim.log.levels.WARN)
     return
   end
@@ -521,6 +538,15 @@ vim.api.nvim_create_autocmd('BufWinEnter', {
     end
   end,
 })
+-- Re-wrap comments to the new window widths
+vim.api.nvim_create_autocmd({ 'WinResized', 'VimResized' }, {
+  group = group,
+  callback = function()
+    if state then
+      render_visible()
+    end
+  end,
+})
 vim.api.nvim_create_autocmd('User', {
   group = group,
   pattern = 'DiffviewDiffBufWinEnter',
@@ -542,6 +568,7 @@ vim.keymap.set('x', '<leader>rc', function()
 end, { desc = '[R]eview [C]omment range' })
 vim.keymap.set('n', '<leader>re', M.edit, { desc = '[R]eview [E]dit comment' })
 vim.keymap.set('n', '<leader>rd', M.delete, { desc = '[R]eview [D]elete comment' })
+vim.keymap.set('n', '<leader>rn', M.note, { desc = '[R]eview general [N]ote' })
 vim.keymap.set('n', '<leader>rl', M.list, { desc = '[R]eview [L]ist comments' })
 vim.keymap.set('n', '<leader>ry', M.copy, { desc = '[R]eview cop[Y] (and finish)' })
 vim.keymap.set('n', '<leader>rx', M.discard, { desc = '[R]eview discard' })
