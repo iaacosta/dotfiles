@@ -120,6 +120,38 @@ end
 
 -- Rendering ------------------------------------------------------------------
 
+local comment_prefix = '  ┃ '
+
+-- Word-wraps text to `width` columns, keeping each paragraph's indentation
+local function wrap(text, width)
+  local lines = {}
+  for _, paragraph in ipairs(vim.split(text, '\n')) do
+    local indent = paragraph:match '^%s*'
+    local line = ''
+    for word in paragraph:gmatch '%S+' do
+      local candidate = line == '' and (indent .. word) or (line .. ' ' .. word)
+      if line ~= '' and vim.fn.strdisplaywidth(candidate) > width then
+        table.insert(lines, line)
+        line = indent .. word
+      else
+        line = candidate
+      end
+    end
+    table.insert(lines, line)
+  end
+  return lines
+end
+
+-- Room for comment text in the window showing the buffer, capped for readability
+local function text_width(bufnr)
+  local win = vim.fn.bufwinid(bufnr)
+  if win == -1 then
+    return 80
+  end
+  local info = vim.fn.getwininfo(win)[1]
+  return math.max(20, math.min(100, info.width - info.textoff - vim.fn.strdisplaywidth(comment_prefix)))
+end
+
 local function render(bufnr)
   if not vim.api.nvim_buf_is_valid(bufnr) then
     return
@@ -137,8 +169,8 @@ local function render(bufnr)
         vim.api.nvim_buf_set_extmark(bufnr, ns, line - 1, 0, { sign_text = '▎', sign_hl_group = 'DiagnosticSignInfo' })
       end
       local virt_lines = {}
-      for _, text in ipairs(vim.split(c.body, '\n')) do
-        table.insert(virt_lines, { { '  ┃ ' .. text, 'DiagnosticVirtualTextInfo' } })
+      for _, text in ipairs(wrap(c.body, text_width(bufnr))) do
+        table.insert(virt_lines, { { comment_prefix .. text, 'DiagnosticVirtualTextInfo' } })
       end
       vim.api.nvim_buf_set_extmark(bufnr, ns, last - 1, 0, { virt_lines = virt_lines })
     end
@@ -176,6 +208,7 @@ local function open_editor(title, initial, on_save)
     footer = ' <C-s> or :w save · q cancel ',
     footer_pos = 'center',
   })
+  vim.wo[win].linebreak = true
 
   local function close()
     if vim.api.nvim_win_is_valid(win) then
@@ -461,7 +494,10 @@ function M.discard()
 end
 
 function M.status()
-  return state and ('● REVIEW %d'):format(#state.review.comments) or ''
+  if not state then
+    return ''
+  end
+  return ('● REVIEW %d%s'):format(#state.review.comments, state.review.note and ' +note' or '')
 end
 
 -- Setup ----------------------------------------------------------------------
