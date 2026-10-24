@@ -1,5 +1,5 @@
 return {
-  'sindrets/diffview.nvim',
+  'dlyongemallo/diffview-plus.nvim',
   config = function()
     local diffview = require 'diffview'
 
