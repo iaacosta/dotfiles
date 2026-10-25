@@ -1,8 +1,6 @@
 # Brewfile for dotfiles setup
 # Run with: brew bundle --file=Brewfile
 
-tap "homebrew/cask-fonts"
-
 # Shell
 brew "zsh"
 
