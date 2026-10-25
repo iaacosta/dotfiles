@@ -33,6 +33,42 @@ check_symlink() {
   [[ -L "$1" ]] && [[ "$(readlink "$1")" == "$2" ]]
 }
 
+has_preview() {
+  [[ " ${PREVIEW_ITEMS[*]} " =~ " $1 " ]]
+}
+
+# target|link pairs, shared by the preview and the execution
+SYMLINKS=(
+  "$HOME/dotfiles/.gitconfig|$HOME/.gitconfig"
+  "$HOME/dotfiles/tmux/tmux.conf|$HOME/.tmux.conf"
+  "$HOME/dotfiles/nvim|$HOME/.config/nvim"
+  "$HOME/dotfiles/ghostty|$HOME/.config/ghostty"
+  "$HOME/dotfiles/claude/agents|$HOME/.claude/agents"
+  "$HOME/dotfiles/claude/commands|$HOME/.claude/commands"
+  "$HOME/dotfiles/claude/skills|$HOME/.claude/skills"
+)
+
+# Links created by older versions of this script whose targets were removed
+STALE_LINKS=(
+  "$HOME/.config/opencode"
+)
+
+is_stale_link() {
+  [[ -L "$1" ]] && [[ "$(readlink "$1")" == "$HOME/dotfiles/"* ]]
+}
+
+LAZY_LOCK="$HOME/dotfiles/nvim/lazy-lock.json"
+LAZY_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/nvim/lazy"
+
+# True when an installed plugin is missing or not at its lazy-lock.json commit
+plugins_drifted() {
+  local name commit
+  while read -r name commit; do
+    [[ "$(git -C "$LAZY_DIR/$name" rev-parse HEAD 2>/dev/null)" == "$commit" ]] || return 0
+  done < <(sed -nE 's/^ *"([^"]+)": \{.*"commit": "([0-9a-f]+)".*/\1 \2/p' "$LAZY_LOCK")
+  return 1
+}
+
 # === PREVIEW BUILDING ===
 
 echo ""
@@ -68,9 +104,10 @@ if [[ "$OS" == "Darwin" ]]; then
     
     # Check for packages to install
     if check_file "$(pwd)/Brewfile"; then
-      BREW_MISSING=$(brew bundle check --file="$(pwd)/Brewfile" 2>&1 | grep -c "needs to be installed" || true)
-      if [[ "$BREW_MISSING" -gt 0 ]]; then
-        echo -e "  ${YELLOW}•${NC} Will install $BREW_MISSING package(s) from Brewfile"
+      # Only --verbose lists the packages; the exit code is what's reliable
+      if ! brew bundle check --file="$(pwd)/Brewfile" &> /dev/null; then
+        BREW_MISSING=$(brew bundle check --verbose --file="$(pwd)/Brewfile" 2>&1 | grep -c "needs to be installed" || true)
+        echo -e "  ${YELLOW}•${NC} Will install or upgrade $BREW_MISSING package(s) from Brewfile"
         add_preview "brew_packages"
       else
         echo -e "  ${GREEN}✓${NC} All Brewfile packages already installed"
@@ -125,27 +162,11 @@ if check_command nodenv; then
     add_preview "nodenv_aliases"
   fi
   
-  # Get latest LTS version
-  echo -e "  ${YELLOW}...${NC} Checking for latest Node LTS version..."
-  NODE_LTS=$(curl -s https://nodejs.org/dist/index.json 2>/dev/null | grep -o '"version":"v[0-9.]*".*"lts":"[A-Za-z]' | head -1 | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | sed 's/v//' || echo "")
-  
-  if [[ -n "$NODE_LTS" ]]; then
-    if nodenv versions 2>/dev/null | grep -q "$NODE_LTS"; then
-      echo -e "  ${GREEN}✓${NC} Node $NODE_LTS (LTS) already installed"
-      
-      CURRENT_GLOBAL=$(nodenv global 2>/dev/null || echo "")
-      if [[ "$CURRENT_GLOBAL" == "$NODE_LTS" ]]; then
-        echo -e "  ${GREEN}✓${NC} Node $NODE_LTS is set as global"
-      else
-        echo -e "  ${YELLOW}•${NC} Will set Node $NODE_LTS as global (currently: $CURRENT_GLOBAL)"
-        add_preview "node_global"
-      fi
-    else
-      echo -e "  ${YELLOW}•${NC} Will install Node $NODE_LTS (LTS) and set as global"
-      add_preview "node_install"
-    fi
+  # Only bootstrap Node; upgrading versions is left to nodenv
+  if [[ -n "$(nodenv versions --bare 2>/dev/null)" ]]; then
+    echo -e "  ${GREEN}✓${NC} Node installed (global: $(nodenv global 2>/dev/null))"
   else
-    echo -e "  ${YELLOW}•${NC} Could not determine LTS version (will install latest available)"
+    echo -e "  ${YELLOW}•${NC} Will install Node LTS and set as global"
     add_preview "node_install"
   fi
 else
@@ -169,26 +190,11 @@ if check_command rbenv; then
     add_preview "rbenv_aliases"
   fi
   
-  # Get latest stable Ruby
-  RUBY_LATEST=$(rbenv install -l 2>/dev/null | grep -E "^[0-9]+\.[0-9]+\.[0-9]+$" | tail -1 || echo "")
-  
-  if [[ -n "$RUBY_LATEST" ]]; then
-    if rbenv versions 2>/dev/null | grep -q "$RUBY_LATEST"; then
-      echo -e "  ${GREEN}✓${NC} Ruby $RUBY_LATEST already installed"
-      
-      CURRENT_GLOBAL=$(rbenv global 2>/dev/null || echo "")
-      if [[ "$CURRENT_GLOBAL" == "$RUBY_LATEST" ]]; then
-        echo -e "  ${GREEN}✓${NC} Ruby $RUBY_LATEST is set as global"
-      else
-        echo -e "  ${YELLOW}•${NC} Will set Ruby $RUBY_LATEST as global (currently: $CURRENT_GLOBAL)"
-        add_preview "ruby_global"
-      fi
-    else
-      echo -e "  ${YELLOW}•${NC} Will install Ruby $RUBY_LATEST and set as global"
-      add_preview "ruby_install"
-    fi
+  # Only bootstrap Ruby; upgrading versions is left to rbenv
+  if [[ -n "$(rbenv versions --bare 2>/dev/null)" ]]; then
+    echo -e "  ${GREEN}✓${NC} Ruby installed (global: $(rbenv global 2>/dev/null))"
   else
-    echo -e "  ${YELLOW}•${NC} Will install latest Ruby version"
+    echo -e "  ${YELLOW}•${NC} Will install latest Ruby and set as global"
     add_preview "ruby_install"
   fi
 else
@@ -212,31 +218,44 @@ echo ""
 # 7. Symlinks
 echo -e "${BLUE}[Dotfile Symlinks]${NC}"
 
-check_and_add_symlink() {
-  local target="$1"
-  local link="$2"
-  
-  if check_symlink "$link" "$target"; then
-    echo -e "  ${GREEN}✓${NC} $link"
-  else
-    echo -e "  ${YELLOW}•${NC} Will link: $link -> $target"
-    add_preview "symlink_$link"
-  fi
-}
-
 if [[ -f "$HOME/.zshrc" ]] && [[ ! -L "$HOME/.zshrc" ]]; then
   echo -e "  ${GREEN}✓${NC} ~/.zshrc (local stub already exists)"
 else
   echo -e "  ${YELLOW}•${NC} Will create local stub: ~/.zshrc -> sources ~/dotfiles/.zshrc"
   add_preview "zshrc_stub"
 fi
-check_and_add_symlink "$HOME/dotfiles/.gitconfig" "$HOME/.gitconfig"
-check_and_add_symlink "$HOME/dotfiles/tmux/tmux.conf" "$HOME/.tmux.conf"
-check_and_add_symlink "$HOME/dotfiles/nvim" "$HOME/.config/nvim"
-check_and_add_symlink "$HOME/dotfiles/ghostty" "$HOME/.config/ghostty"
-check_and_add_symlink "$HOME/dotfiles/claude/agents" "$HOME/.claude/agents"
-check_and_add_symlink "$HOME/dotfiles/claude/commands" "$HOME/.claude/commands"
-check_and_add_symlink "$HOME/dotfiles/claude/skills" "$HOME/.claude/skills"
+for pair in "${SYMLINKS[@]}"; do
+  target="${pair%%|*}"
+  link="${pair#*|}"
+  if check_symlink "$link" "$target"; then
+    echo -e "  ${GREEN}✓${NC} $link"
+  elif [[ -e "$link" ]] && [[ ! -L "$link" ]]; then
+    echo -e "  ${YELLOW}•${NC} Will back up existing $link and link it -> $target"
+    add_preview "symlinks"
+  else
+    echo -e "  ${YELLOW}•${NC} Will link: $link -> $target"
+    add_preview "symlinks"
+  fi
+done
+for link in "${STALE_LINKS[@]}"; do
+  if is_stale_link "$link"; then
+    echo -e "  ${YELLOW}•${NC} Will remove stale link: $link"
+    add_preview "stale_links"
+  fi
+done
+echo ""
+
+# 8. Neovim plugins
+echo -e "${BLUE}[Neovim Plugins]${NC}"
+
+if ! check_dir "$LAZY_DIR"; then
+  echo -e "  ${GREEN}✓${NC} Not installed yet (lazy.nvim installs them on first launch)"
+elif plugins_drifted; then
+  echo -e "  ${YELLOW}•${NC} Will restore plugins to the versions in lazy-lock.json"
+  add_preview "nvim_plugins"
+else
+  echo -e "  ${GREEN}✓${NC} Plugins match lazy-lock.json"
+fi
 echo ""
 
 # === CONFIRMATION ===
@@ -264,7 +283,7 @@ echo "=== Running Setup ==="
 echo ""
 
 # 1. macOS keyboard settings
-if [[ " ${PREVIEW_ITEMS[@]} " =~ " macos_keyboard " ]]; then
+if has_preview macos_keyboard; then
   echo -e "${BLUE}Configuring macOS keyboard settings...${NC}"
   defaults write NSGlobalDomain KeyRepeat -int 1
   defaults write NSGlobalDomain InitialKeyRepeat -int 10
@@ -274,7 +293,7 @@ if [[ " ${PREVIEW_ITEMS[@]} " =~ " macos_keyboard " ]]; then
 fi
 
 # 2. Install Homebrew
-if [[ " ${PREVIEW_ITEMS[@]} " =~ " brew_install " ]]; then
+if has_preview brew_install; then
   echo -e "${BLUE}Installing Homebrew...${NC}"
   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
   
@@ -287,7 +306,7 @@ if [[ " ${PREVIEW_ITEMS[@]} " =~ " brew_install " ]]; then
 fi
 
 # 3. Install packages
-if [[ " ${PREVIEW_ITEMS[@]} " =~ " brew_packages " ]] && [[ "$OS" == "Darwin" ]]; then
+if has_preview brew_packages && [[ "$OS" == "Darwin" ]]; then
   echo -e "${BLUE}Installing packages from Brewfile...${NC}"
   brew bundle --file="$(pwd)/Brewfile"
   echo -e "${GREEN}✓${NC} Packages installed"
@@ -323,7 +342,7 @@ if [[ "$OS" == "Linux" ]]; then
 fi
 
 # 4. Oh My Zsh
-if [[ " ${PREVIEW_ITEMS[@]} " =~ " ohmyzsh " ]]; then
+if has_preview ohmyzsh; then
   echo -e "${BLUE}Installing Oh My Zsh...${NC}"
   sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
   echo -e "${GREEN}✓${NC} Oh My Zsh installed"
@@ -333,14 +352,14 @@ fi
 # 5. Zsh plugins
 ZSH_CUSTOM="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
 
-if [[ " ${PREVIEW_ITEMS[@]} " =~ " zsh_autosuggestions " ]]; then
+if has_preview zsh_autosuggestions; then
   echo -e "${BLUE}Installing zsh-autosuggestions...${NC}"
   git clone https://github.com/zsh-users/zsh-autosuggestions "$ZSH_CUSTOM/plugins/zsh-autosuggestions"
   echo -e "${GREEN}✓${NC} zsh-autosuggestions installed"
   echo ""
 fi
 
-if [[ " ${PREVIEW_ITEMS[@]} " =~ " zsh_highlighting " ]]; then
+if has_preview zsh_highlighting; then
   echo -e "${BLUE}Installing zsh-syntax-highlighting...${NC}"
   git clone https://github.com/zsh-users/zsh-syntax-highlighting "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting"
   echo -e "${GREEN}✓${NC} zsh-syntax-highlighting installed"
@@ -348,7 +367,7 @@ if [[ " ${PREVIEW_ITEMS[@]} " =~ " zsh_highlighting " ]]; then
 fi
 
 # 6. nodenv plugins
-if [[ " ${PREVIEW_ITEMS[@]} " =~ " nodenv_aliases " ]] || [[ " ${PREVIEW_ITEMS[@]} " =~ " nodenv_setup " ]]; then
+if has_preview nodenv_aliases || has_preview nodenv_setup; then
   echo -e "${BLUE}Setting up nodenv plugins...${NC}"
   
   # Ensure nodenv is available
@@ -367,7 +386,7 @@ if [[ " ${PREVIEW_ITEMS[@]} " =~ " nodenv_aliases " ]] || [[ " ${PREVIEW_ITEMS[@
 fi
 
 # 7. Install Node LTS
-if [[ " ${PREVIEW_ITEMS[@]} " =~ " node_install " ]] || [[ " ${PREVIEW_ITEMS[@]} " =~ " node_global " ]]; then
+if has_preview node_install || has_preview nodenv_setup; then
   echo -e "${BLUE}Installing Node.js LTS...${NC}"
   
   # Ensure nodenv is available
@@ -379,9 +398,7 @@ if [[ " ${PREVIEW_ITEMS[@]} " =~ " node_install " ]] || [[ " ${PREVIEW_ITEMS[@]}
   NODE_LTS=$(curl -s https://nodejs.org/dist/index.json 2>/dev/null | grep -o '"version":"v[0-9.]*".*"lts":"[A-Za-z]' | head -1 | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | sed 's/v//' || echo "")
   
   if [[ -n "$NODE_LTS" ]]; then
-    if ! nodenv versions 2>/dev/null | grep -q "$NODE_LTS"; then
-      nodenv install "$NODE_LTS"
-    fi
+    nodenv install --skip-existing "$NODE_LTS"
     nodenv global "$NODE_LTS"
     echo -e "${GREEN}✓${NC} Node $NODE_LTS (LTS) installed and set as global"
   else
@@ -391,7 +408,7 @@ if [[ " ${PREVIEW_ITEMS[@]} " =~ " node_install " ]] || [[ " ${PREVIEW_ITEMS[@]}
 fi
 
 # 8. rbenv plugins
-if [[ " ${PREVIEW_ITEMS[@]} " =~ " rbenv_aliases " ]] || [[ " ${PREVIEW_ITEMS[@]} " =~ " rbenv_setup " ]]; then
+if has_preview rbenv_aliases || has_preview rbenv_setup; then
   echo -e "${BLUE}Setting up rbenv plugins...${NC}"
   
   # Ensure rbenv is available
@@ -410,7 +427,7 @@ if [[ " ${PREVIEW_ITEMS[@]} " =~ " rbenv_aliases " ]] || [[ " ${PREVIEW_ITEMS[@]
 fi
 
 # 9. Install Ruby
-if [[ " ${PREVIEW_ITEMS[@]} " =~ " ruby_install " ]] || [[ " ${PREVIEW_ITEMS[@]} " =~ " ruby_global " ]]; then
+if has_preview ruby_install || has_preview rbenv_setup; then
   echo -e "${BLUE}Installing Ruby...${NC}"
   
   # Ensure rbenv is available
@@ -422,9 +439,7 @@ if [[ " ${PREVIEW_ITEMS[@]} " =~ " ruby_install " ]] || [[ " ${PREVIEW_ITEMS[@]}
   RUBY_LATEST=$(rbenv install -l 2>/dev/null | grep -E "^[0-9]+\.[0-9]+\.[0-9]+$" | tail -1 || echo "")
   
   if [[ -n "$RUBY_LATEST" ]]; then
-    if ! rbenv versions 2>/dev/null | grep -q "$RUBY_LATEST"; then
-      rbenv install "$RUBY_LATEST"
-    fi
+    rbenv install --skip-existing "$RUBY_LATEST"
     rbenv global "$RUBY_LATEST"
     echo -e "${GREEN}✓${NC} Ruby $RUBY_LATEST installed and set as global"
   else
@@ -434,7 +449,7 @@ if [[ " ${PREVIEW_ITEMS[@]} " =~ " ruby_install " ]] || [[ " ${PREVIEW_ITEMS[@]}
 fi
 
 # 10. TPM
-if [[ " ${PREVIEW_ITEMS[@]} " =~ " tpm " ]]; then
+if has_preview tpm; then
   echo -e "${BLUE}Installing Tmux Plugin Manager...${NC}"
   git clone https://github.com/tmux-plugins/tpm "$HOME/.tmux/plugins/tpm"
   echo -e "${GREEN}✓${NC} TPM installed"
@@ -450,7 +465,7 @@ fi
 #
 # Instead, ~/.zshrc is a tiny machine-local stub that sources the shared
 # ~/dotfiles/.zshrc. Anything machine-specific lives in the local stub.
-if [[ " ${PREVIEW_ITEMS[@]} " =~ " zshrc_stub " ]]; then
+if has_preview zshrc_stub; then
   echo -e "${BLUE}Creating local ~/.zshrc stub...${NC}"
 
   if [[ -e "$HOME/.zshrc" ]] || [[ -L "$HOME/.zshrc" ]]; then
@@ -474,22 +489,46 @@ EOF
 fi
 
 # 11b. Symlinks
-if [[ " ${PREVIEW_ITEMS[@]} " =~ " symlink_ " ]]; then
+#
+# Only wrong links are touched. `ln -n` replaces an existing link to a directory
+# instead of creating a link inside it, and real files/folders are backed up first.
+if has_preview symlinks; then
   echo -e "${BLUE}Creating symlinks...${NC}"
-  
-  mkdir -p ~/.config
-  mkdir -p ~/.claude
 
-  ln -sf ~/dotfiles/.gitconfig ~/.gitconfig
-  ln -sf ~/dotfiles/tmux/tmux.conf ~/.tmux.conf
-  ln -sf ~/dotfiles/nvim ~/.config/nvim
-  ln -sf ~/dotfiles/ghostty ~/.config/ghostty
-  ln -sfn ~/dotfiles/claude/agents ~/.claude/agents
-  ln -sfn ~/dotfiles/claude/commands ~/.claude/commands
-  ln -sfn ~/dotfiles/claude/skills ~/.claude/skills
-  ln -sf ~/dotfiles/.global-gitignore ~/.gitignore
-  
-  echo -e "${GREEN}✓${NC} Symlinks created"
+  for pair in "${SYMLINKS[@]}"; do
+    target="${pair%%|*}"
+    link="${pair#*|}"
+    check_symlink "$link" "$target" && continue
+
+    mkdir -p "$(dirname "$link")"
+    if [[ -e "$link" ]] && [[ ! -L "$link" ]]; then
+      BACKUP="$link.backup.$(date +%Y%m%d%H%M%S)"
+      mv "$link" "$BACKUP"
+      echo -e "  ${YELLOW}•${NC} Existing $link moved to $BACKUP"
+    fi
+    ln -sfn "$target" "$link"
+    echo -e "  ${GREEN}✓${NC} $link -> $target"
+  done
+  echo ""
+fi
+
+# 11c. Stale links
+if has_preview stale_links; then
+  echo -e "${BLUE}Removing stale links...${NC}"
+  for link in "${STALE_LINKS[@]}"; do
+    if is_stale_link "$link"; then
+      rm "$link"
+      echo -e "  ${GREEN}✓${NC} Removed $link"
+    fi
+  done
+  echo ""
+fi
+
+# 12. Neovim plugins
+if has_preview nvim_plugins; then
+  echo -e "${BLUE}Restoring Neovim plugins from lazy-lock.json...${NC}"
+  nvim --headless "+Lazy! restore" +qa
+  echo -e "${GREEN}✓${NC} Plugins restored"
   echo ""
 fi
 
@@ -502,7 +541,7 @@ echo ""
 echo "Next steps:"
 echo ""
 echo "  1. Restart your terminal (or run: exec zsh)"
-if [[ "$OS" == "Darwin" ]] && [[ " ${PREVIEW_ITEMS[@]} " =~ " macos_keyboard " ]]; then
+if [[ "$OS" == "Darwin" ]] && has_preview macos_keyboard; then
   echo "  2. Log out and log back in for keyboard settings to take effect"
 fi
 echo "  3. Open nvim - plugins will install automatically"
