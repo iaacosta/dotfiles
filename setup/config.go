@@ -13,6 +13,7 @@ import (
 	"setup/internal/steps/shell"
 	"setup/internal/steps/terminal"
 	"setup/internal/steps/tmux"
+	"setup/internal/steps/windows"
 )
 
 var setupSteps = []core.Step{
@@ -27,4 +28,5 @@ var setupSteps = []core.Step{
 	claude.New(),
 	terminal.New(),
 	macos.New(),
+	windows.New(),
 }
