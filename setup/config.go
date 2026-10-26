@@ -1,0 +1,32 @@
+package main
+
+import (
+	"setup/internal/core"
+	"setup/internal/steps/claude"
+	"setup/internal/steps/clipboard"
+	"setup/internal/steps/clitools"
+	"setup/internal/steps/golang"
+	"setup/internal/steps/macos"
+	"setup/internal/steps/neovim"
+	"setup/internal/steps/node"
+	"setup/internal/steps/packagemanager"
+	"setup/internal/steps/ruby"
+	"setup/internal/steps/shell"
+	"setup/internal/steps/terminal"
+	"setup/internal/steps/tmux"
+)
+
+var setupSteps = []core.Step{
+	packagemanager.New(),
+	shell.New(),
+	clitools.New(),
+	tmux.New(),
+	neovim.New(),
+	golang.New(),
+	ruby.New(),
+	node.New(),
+	claude.New(),
+	terminal.New(),
+	macos.New(),
+	clipboard.New(),
+}

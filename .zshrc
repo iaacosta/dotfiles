@@ -46,6 +46,9 @@ fi
 # Direnv
 eval "$(direnv hook zsh)"
 
+# User binaries (neovim and tree-sitter releases on Linux)
+export PATH="$HOME/.local/bin:$PATH"
+
 # Golang
 export PATH="$PATH:$HOME/go/bin"
 export PATH="$PATH:$HOME/bin"
