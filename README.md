@@ -38,7 +38,7 @@ The steps are listed in order in `setup/config.go`. Each one lives in its own fo
 - **Editor**: neovim (0.12+) with Lazy plugin manager
 - **Tools**: fzf, ripgrep, direnv, tmux (with TPM and a custom `tmux-workspace` launcher), gh
 - **Languages**: Node.js (nodenv), Ruby (rbenv), Go
-- **Terminal**: Ghostty with 0xProto Nerd Font
+- **Terminal**: Ghostty with 0xProto Nerd Font (on WSL, the font is installed for the Windows user)
 - **AI**: Claude Code configuration (agents, commands, skills)
 - **Fun**: spongecase — a Go CLI tool for SpOnGeBoB-cAsE text
 

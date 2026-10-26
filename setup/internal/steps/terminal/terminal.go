@@ -11,5 +11,6 @@ func New() core.Step {
 			tasks.Pkgs("ghostty", "font-0xproto-nerd-font"),
 			tasks.Symlink("ghostty", ".config/ghostty"),
 		),
+		tasks.OnlyWSL(windowsFont),
 	}}
 }
