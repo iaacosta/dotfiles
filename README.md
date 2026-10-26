@@ -60,6 +60,7 @@ Setup creates the following symlinks:
 | `~/dotfiles/claude/agents`      | `~/.claude/agents`      |
 | `~/dotfiles/claude/commands`    | `~/.claude/commands`    |
 | `~/dotfiles/claude/skills`      | `~/.claude/skills`      |
+| `~/dotfiles/claude/statusline.sh` | `~/.claude/statusline.sh` |
 
 `~/.zshrc` is **not** symlinked — see below for why.
 
