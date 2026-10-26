@@ -1,6 +1,7 @@
 package tasks_test
 
 import (
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -19,15 +20,25 @@ func TestInstallPrebuiltRelease(t *testing.T) {
 	cases := []struct {
 		name    string
 		release tasks.Release
+		archive func(t *testing.T, content string) []byte
 		extract func(t *testing.T, cmd string)
+		done    string
 	}{
 		{
 			name:    "single gzipped binary",
-			release: tasks.Release{Name: "tool", URL: "https://example.com/tool-{arch}.gz", Bins: []string{"tool"}},
+			release: tasks.Release{Name: "tool", URL: "https://example.com/tool-{arch}.gz", Bins: []string{"tool"}, VersionArgs: []string{"--version"}},
+			archive: gzipped,
+		},
+		{
+			name:    "zip without a version command",
+			release: tasks.Release{Name: "tool", URL: "https://example.com/tool-{arch}.zip", Bins: []string{"tool"}},
+			archive: zipped,
+			done:    "tool installed",
 		},
 		{
 			name:    "tarball with a bin folder",
-			release: tasks.Release{Name: "tool", URL: "https://example.com/{version}/tool-{arch}.tar.gz", Bins: []string{"bin/tool"}, Version: func(context.Context, *core.Env) (string, error) { return "v1", nil }},
+			release: tasks.Release{Name: "tool", URL: "https://example.com/{version}/tool-{arch}.tar.gz", Bins: []string{"bin/tool"}, VersionArgs: []string{"--version"}, Version: func(context.Context, *core.Env) (string, error) { return "v1", nil }},
+			archive: gzipped,
 			extract: func(t *testing.T, cmd string) {
 				write(t, filepath.Join(strings.Fields(cmd)[4], "bin/tool"), "binary")
 			},
@@ -48,7 +59,7 @@ func TestInstallPrebuiltRelease(t *testing.T) {
 					return "tool 1.0", nil
 				case args[0] == "curl":
 					url = args[4]
-					return "", os.WriteFile(args[3], gzipped(t, "binary"), 0o644)
+					return "", os.WriteFile(args[3], tc.archive(t, "binary"), 0o644)
 				case args[0] == "tar":
 					tc.extract(t, cmd)
 				}
@@ -67,7 +78,14 @@ func TestInstallPrebuiltRelease(t *testing.T) {
 			if content, err := os.ReadFile(link); err != nil || string(content) != "binary" {
 				t.Fatalf("~/.local/bin/tool: %q, %v", content, err)
 			}
-			if plan, _ := task(context.Background(), env); len(plan.Actions) != 0 || plan.Done[0] != "tool: tool 1.0" {
+			if info, _ := os.Stat(link); info.Mode()&0o111 == 0 {
+				t.Fatal("binary isn't executable")
+			}
+			want := tc.done
+			if want == "" {
+				want = "tool: tool 1.0"
+			}
+			if plan, _ := task(context.Background(), env); len(plan.Actions) != 0 || plan.Done[0] != want {
 				t.Fatalf("second run: %+v", plan)
 			}
 		})
@@ -80,5 +98,16 @@ func gzipped(t *testing.T, content string) []byte {
 	gz := gzip.NewWriter(&buf)
 	gz.Write([]byte(content))
 	gz.Close()
+	return buf.Bytes()
+}
+
+func zipped(t *testing.T, content string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	w, _ := zw.Create("tool")
+	w.Write([]byte(content))
+	zw.Create("LICENSE")
+	zw.Close()
 	return buf.Bytes()
 }

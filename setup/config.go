@@ -3,7 +3,6 @@ package main
 import (
 	"setup/internal/core"
 	"setup/internal/steps/claude"
-	"setup/internal/steps/clipboard"
 	"setup/internal/steps/clitools"
 	"setup/internal/steps/golang"
 	"setup/internal/steps/macos"
@@ -28,5 +27,4 @@ var setupSteps = []core.Step{
 	claude.New(),
 	terminal.New(),
 	macos.New(),
-	clipboard.New(),
 }

@@ -23,11 +23,11 @@ func TestFreshMachinePlans(t *testing.T) {
 		{
 			name: "macOS", os: core.Mac, manager: managers.Brew{},
 			want:    []string{"Install neovim with brew", "Install ghostty, font-0xproto-nerd-font with brew", "Set KeyRepeat to 1"},
-			wantNot: []string{"release", "apt"},
+			wantNot: []string{"release", "apt", "win32yank"},
 		},
 		{
 			name: "WSL", os: core.Linux, wsl: true, manager: managers.Apt{},
-			want:    []string{"Install the latest neovim release", "Install the latest tree-sitter release", "Install the latest go release", "Clone https://github.com/rbenv/rbenv"},
+			want:    []string{"Install the latest neovim release", "Install the latest tree-sitter release", "Install the latest go release", "Clone https://github.com/rbenv/rbenv", "Install the latest win32yank release"},
 			wantNot: []string{"ghostty", "KeyRepeat", "brew"},
 		},
 	}

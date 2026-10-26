@@ -10,6 +10,7 @@ func New() core.Step {
 	return core.Step{Name: "Neovim", Tasks: []core.Task{
 		tasks.Pkg("neovim", tasks.Overrides{managers.Apt{}: tasks.InstallPrebuiltRelease(neovimRelease)}),
 		tasks.Pkg("tree-sitter-cli", tasks.Overrides{managers.Apt{}: tasks.InstallPrebuiltRelease(treeSitterRelease)}),
+		tasks.OnlyWSL(tasks.InstallPrebuiltRelease(win32yankRelease)),
 		tasks.Symlink("nvim", ".config/nvim"),
 		restorePlugins,
 	}}

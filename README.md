@@ -45,7 +45,7 @@ The steps are listed in order in `setup/config.go`. Each one lives in its own fo
 ## Platform Support
 
 - macOS (Homebrew)
-- Ubuntu/WSL (apt, plus official releases where apt is too old: neovim, tree-sitter, Go)
+- Ubuntu/WSL (apt, plus official releases where apt is too old: neovim, tree-sitter, Go). On WSL it also installs `win32yank.exe`, which lets nvim use the Windows clipboard.
 
 ## Symlinks
 

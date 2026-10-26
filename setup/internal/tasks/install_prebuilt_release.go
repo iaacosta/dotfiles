@@ -1,8 +1,10 @@
 package tasks
 
 import (
+	"archive/zip"
 	"compress/gzip"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -24,12 +26,8 @@ type Release struct {
 func InstallPrebuiltRelease(r Release) core.Task {
 	return func(ctx context.Context, env *core.Env) (core.Plan, error) {
 		bin := env.HomePath(filepath.Join(".local/bin", filepath.Base(r.Bins[0])))
-		args := r.VersionArgs
-		if args == nil {
-			args = []string{"--version"}
-		}
-		if out, err := env.Run.Output(ctx, bin, args...); err == nil {
-			return core.Plan{Done: []string{r.Name + ": " + strings.Split(out, "\n")[0]}}, nil
+		if _, err := os.Stat(bin); err == nil {
+			return core.Plan{Done: []string{r.installed(ctx, env, bin)}}, nil
 		}
 		return core.Plan{Actions: []core.Action{{
 			Desc: "Install the latest " + r.Name + " release into ~/.local",
@@ -38,6 +36,17 @@ func InstallPrebuiltRelease(r Release) core.Task {
 			},
 		}}}, nil
 	}
+}
+
+func (r Release) installed(ctx context.Context, env *core.Env, bin string) string {
+	if r.VersionArgs == nil {
+		return r.Name + " installed"
+	}
+	out, err := env.Run.Output(ctx, bin, r.VersionArgs...)
+	if err != nil || out == "" {
+		return r.Name + " installed"
+	}
+	return r.Name + ": " + strings.Split(out, "\n")[0]
 }
 
 func (r Release) install(ctx context.Context, env *core.Env) error {
@@ -58,9 +67,12 @@ func (r Release) install(ctx context.Context, env *core.Env) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	if strings.HasSuffix(archive, ".tar.gz") {
+	switch {
+	case strings.HasSuffix(archive, ".tar.gz"):
 		err = env.Run.Run(ctx, "tar", "-xzf", archive, "-C", dir, "--strip-components=1")
-	} else {
+	case strings.HasSuffix(archive, ".zip"):
+		err = unzip(archive, dir)
+	default:
 		err = gunzip(archive, filepath.Join(dir, r.Bins[0]))
 	}
 	if err != nil {
@@ -72,6 +84,9 @@ func (r Release) install(ctx context.Context, env *core.Env) error {
 		return err
 	}
 	for _, b := range r.Bins {
+		if err := os.Chmod(filepath.Join(dir, b), 0o755); err != nil {
+			return err
+		}
 		link := filepath.Join(binDir, filepath.Base(b))
 		os.Remove(link)
 		if err := os.Symlink(filepath.Join(dir, b), link); err != nil {
@@ -113,5 +128,47 @@ func gunzip(src, dest string) error {
 	}
 	defer out.Close()
 	_, err = io.Copy(out, gz)
+	return err
+}
+
+func unzip(src, dir string) error {
+	archive, err := zip.OpenReader(src)
+	if err != nil {
+		return err
+	}
+	defer archive.Close()
+	for _, f := range archive.File {
+		path := filepath.Join(dir, f.Name)
+		if !strings.HasPrefix(path, filepath.Clean(dir)+string(os.PathSeparator)) {
+			return fmt.Errorf("unsafe path in archive: %s", f.Name)
+		}
+		if f.FileInfo().IsDir() {
+			if err := os.MkdirAll(path, 0o755); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := extract(f, path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func extract(f *zip.File, path string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	in, err := f.Open()
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	_, err = io.Copy(out, in)
 	return err
 }
