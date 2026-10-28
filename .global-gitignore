@@ -6,3 +6,4 @@ dev-scripts/*
 
 pr_descriptions/
 pr_descriptions/*
+.tmux-layout

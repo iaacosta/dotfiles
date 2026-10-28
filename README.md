@@ -106,8 +106,5 @@ If a `~/.zshrc` already exists at that point, it is moved aside to
 
 The shared `.zshrc` adds two repo directories to `PATH`:
 
-- **`tmux/bin/`** — contains `tmux-workspace`, a launcher that creates a
-  tmux session with a 4-window layout (shell, nvim, claude, multi-pane
-  bash). Naming it `tmux-workspace` means tmux auto-discovers it as
-  `tmux workspace` via its subcommand convention.
+- **`tmux/bin/`** — contains `tmux-workspace`, a launcher that creates a tmux session from the directory's `.tmux-layout` file (globally gitignored), or a default 4-window layout (shell, nvim, claude, bash) if there is none. Run `tmux-workspace` with no args to see the file format. Naming it `tmux-workspace` means tmux auto-discovers it as `tmux workspace` via its subcommand convention.
 - **`spongecase/bin/`** — a Go CLI that converts text to SpOnGeBoB cAsE.

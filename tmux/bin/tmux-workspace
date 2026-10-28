@@ -1,14 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+default_layout='
+window shell
+window nvim nvim .
+window ai claude
+window bash
+focus nvim
+'
+
 usage() {
   echo "Usage: tmux-workspace [-d] <directory>"
   echo ""
-  echo "Creates a tmux session named after the directory with 4 windows:"
-  echo "  1. shell    - clean shell"
-  echo "  2. nvim     - opens nvim ."
-  echo "  3. claude   - opens claude"
-  echo "  4. bash     - 3 panes (1 top full-width, 2 bottom half-width)"
+  echo "Creates a tmux session named after the directory. The layout is read"
+  echo "from <directory>/.tmux-layout if present, otherwise defaults to:"
+  echo "  1. shell  - clean shell"
+  echo "  2. nvim   - opens nvim ."
+  echo "  3. ai     - opens claude"
+  echo "  4. bash   - clean shell"
+  echo ""
+  echo ".tmux-layout format (one directive per line, # for comments):"
+  echo "  cd <path>                    directory for the following windows/splits, relative to <directory>"
+  echo "  window <name> [command...]   new window, optionally running a command"
+  echo "  split <h|v> [command...]     split the current pane (h: side by side, v: stacked)"
+  echo "  pane <index>                 select a pane in the current window (target for the next split)"
+  echo "  layout <tmux-layout>         apply a tmux layout (tiled, main-vertical, ...)"
+  echo "  focus <name>                 window to select when attaching"
   echo ""
   echo "Options:"
   echo "  -d    create the session detached (don't attach/switch to it)"
@@ -39,25 +56,79 @@ if tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -qx "$session_name
   exec tmux attach-session -t "$session_name"
 fi
 
-# Window 1: clean shell
-tmux new-session -d -s "$session_name" -c "$directory" -n "shell"
+layout="$default_layout"
+if [[ -f "$directory/.tmux-layout" ]]; then
+  layout="$(cat "$directory/.tmux-layout")"
+fi
 
-# Window 2: nvim
-tmux new-window -t "$session_name" -c "$directory" -n "nvim"
-tmux send-keys -t "$session_name:nvim" "nvim ." Enter
+window=""
+focus=""
+cwd="$directory"
+lineno=0
 
-# Window 3: claude
-tmux new-window -t "$session_name" -c "$directory" -n "claude"
-tmux send-keys -t "$session_name:claude" "claude" Enter
+fail() {
+  echo ".tmux-layout:$lineno: $1" >&2
+  [[ -n "$window" ]] && tmux kill-session -t "$session_name"
+  exit 1
+}
 
-# Window 4: bash with 3 panes (1 top full-width, 2 bottom half-width)
-tmux new-window -t "$session_name" -c "$directory" -n "bash"
-tmux split-window -t "$session_name:bash" -v -c "$directory"
-tmux split-window -t "$session_name:bash" -h -c "$directory"
-tmux select-pane -t "$session_name:bash.0"
+while IFS= read -r line; do
+  lineno=$((lineno + 1))
+  read -r directive name cmd <<<"$line" || true
+  [[ -z "${directive:-}" || "$directive" == \#* ]] && continue
 
-# Select window 2 (nvim)
-tmux select-window -t "$session_name:nvim"
+  case "$directive" in
+    cd)
+      cwd="$directory/$name"
+      [[ -d "$cwd" ]] || fail "no directory $name"
+      continue
+      ;;
+    window)
+      if [[ -z "$window" ]]; then
+        window="$(tmux new-session -d -P -F '#{window_id}' -s "$session_name" -c "$cwd" -n "$name")"
+      else
+        window="$(tmux new-window -P -F '#{window_id}' -t "$session_name:" -c "$cwd" -n "$name")"
+      fi
+      ;;
+    split)
+      [[ -z "$window" ]] && fail "split before any window"
+      [[ "$name" != "h" && "$name" != "v" ]] && fail "split expects h or v"
+      tmux split-window "-$name" -t "$window" -c "$cwd"
+      ;;
+    pane)
+      [[ -z "$window" ]] && fail "pane before any window"
+      tmux select-pane -t "$window.$name" || fail "no pane $name"
+      continue
+      ;;
+    layout)
+      [[ -z "$window" ]] && fail "layout before any window"
+      tmux select-layout -t "$window" "$name"
+      continue
+      ;;
+    focus)
+      focus="$name"
+      continue
+      ;;
+    *)
+      fail "unknown directive '$directive'"
+      ;;
+  esac
+
+  [[ -n "${cmd:-}" ]] && tmux send-keys -t "$window" "$cmd" Enter
+done <<<"$layout"
+
+[[ -z "$window" ]] && fail "no windows defined"
+
+# Leave the first pane of every window active
+for w in $(tmux list-windows -t "$session_name" -F '#{window_id}'); do
+  tmux select-pane -t "$w.0"
+done
+
+if [[ -n "$focus" ]]; then
+  tmux select-window -t "$session_name:$focus"
+else
+  tmux select-window -t "$session_name:^"
+fi
 
 # Attach to the session unless running detached
 if [[ "$detach" == true ]]; then
