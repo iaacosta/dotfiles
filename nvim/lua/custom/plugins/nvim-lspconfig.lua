@@ -185,6 +185,16 @@ return {
       ruby_lsp = {},
     }
 
+    -- Mason installs these through npm/gem, so leave them out on machines
+    -- without Node or Ruby (e.g. a home server) instead of failing every start.
+    local has_npm = vim.fn.executable 'npm' == 1
+    local runtime_of = { ts_ls = 'npm', vue_ls = 'npm', emmet_language_server = 'npm', tailwindcss = 'npm', ruby_lsp = 'gem' }
+    for server_name, runtime in pairs(runtime_of) do
+      if vim.fn.executable(runtime) == 0 then
+        servers[server_name] = nil
+      end
+    end
+
     -- Ensure the servers and tools above are installed
     --
     -- To check the current status of installed tools and/or manually install
@@ -202,9 +212,13 @@ return {
     vim.list_extend(ensure_installed, {
       'stylua', -- Used to format Lua code
       'golangci-lint', -- Used by nvim-lint for Go
-      'eslint_d', -- Used by conform and nvim-lint for JS/TS/Vue
-      'prettierd', -- Used by conform for JSON
     })
+    if has_npm then
+      vim.list_extend(ensure_installed, {
+        'eslint_d', -- Used by conform and nvim-lint for JS/TS/Vue
+        'prettierd', -- Used by conform for JSON
+      })
+    end
     require('mason-tool-installer').setup { ensure_installed = ensure_installed }
 
     require('mason-lspconfig').setup {
