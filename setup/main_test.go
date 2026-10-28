@@ -63,3 +63,22 @@ func TestFreshMachinePlans(t *testing.T) {
 		})
 	}
 }
+
+func TestSkipSteps(t *testing.T) {
+	steps := []core.Step{{Name: "Shell"}, {Name: "CLI tools"}, {Name: "Neovim"}}
+
+	got, err := skipSteps(steps, []string{"cli TOOLS", "neovim"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Name != "Shell" {
+		t.Errorf("got %v, want only Shell", got)
+	}
+	if len(steps) != 3 {
+		t.Errorf("input steps were modified: %v", steps)
+	}
+
+	if _, err := skipSteps(steps, []string{"nvim"}); err == nil {
+		t.Error("expected an error for an unknown step")
+	}
+}

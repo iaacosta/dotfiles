@@ -1,7 +1,8 @@
 #!/bin/bash
 #
 # Bootstrap: make sure Go is available, then run the setup program in setup/.
-# Pass --keep-going to report failed steps and continue with the next ones.
+# Pass --keep-going to report failed steps and continue with the next ones,
+# or --skip <step> (repeatable) to leave a step out.
 
 set -e
 

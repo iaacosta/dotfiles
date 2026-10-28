@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 
 	"setup/internal/core"
@@ -15,15 +16,24 @@ import (
 
 func main() {
 	keepGoing := flag.Bool("keep-going", false, "report failed steps and continue with the next ones")
+	var skip []string
+	flag.Func("skip", "skip the step with this name, case-insensitive (repeatable)", func(name string) error {
+		skip = append(skip, name)
+		return nil
+	})
 	flag.Parse()
 
-	if err := run(*keepGoing); err != nil {
+	if err := run(*keepGoing, skip); err != nil {
 		fmt.Fprintln(os.Stderr, "setup:", err)
 		os.Exit(1)
 	}
 }
 
-func run(keepGoing bool) error {
+func run(keepGoing bool, skip []string) error {
+	steps, err := skipSteps(setupSteps, skip)
+	if err != nil {
+		return err
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return err
@@ -40,7 +50,7 @@ func run(keepGoing bool) error {
 
 	ctx := context.Background()
 	fmt.Printf("\n=== Dotfiles setup (%s) ===\n\n", env)
-	plans := core.PlanAll(ctx, env, setupSteps)
+	plans := core.PlanAll(ctx, env, steps)
 	plans.Preview()
 
 	if failed := plans.Failed(); len(failed) > 0 && !keepGoing {
@@ -55,6 +65,17 @@ func run(keepGoing bool) error {
 		return nil
 	}
 	return plans.Apply(ctx, env, keepGoing)
+}
+
+func skipSteps(steps []core.Step, skip []string) ([]core.Step, error) {
+	skipped := map[string]bool{}
+	for _, name := range skip {
+		if !slices.ContainsFunc(steps, func(s core.Step) bool { return strings.EqualFold(s.Name, name) }) {
+			return nil, fmt.Errorf("unknown step %q to skip", name)
+		}
+		skipped[strings.ToLower(name)] = true
+	}
+	return slices.DeleteFunc(slices.Clone(steps), func(s core.Step) bool { return skipped[strings.ToLower(s.Name)] }), nil
 }
 
 func confirm() bool {
