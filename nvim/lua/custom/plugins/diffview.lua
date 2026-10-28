@@ -56,6 +56,19 @@ return {
     vim.keymap.set('n', '<leader>dm', function()
       diffview.open { 'origin/HEAD...HEAD', '--imply-local' }
     end, { desc = '[D]iff [M]erge-base (PR review)' })
+    vim.keymap.set('n', '<leader>dM', function()
+      vim.ui.input({
+        prompt = 'Base commit/branch: ',
+        default = last_branch or '',
+        completion = 'customlist,v:lua.diffview_branch_complete',
+      }, function(rev)
+        if not rev or rev == '' then
+          return
+        end
+        last_branch = rev
+        diffview.open { rev .. '..HEAD', '--imply-local' }
+      end)
+    end, { desc = '[D]iff files against commit (prompt)' })
 
     -- Panel
     vim.keymap.set('n', '<leader>dt', '<cmd>DiffviewToggleFiles<CR>', { desc = '[D]iff [T]oggle files' })
