@@ -4,6 +4,7 @@ import (
 	"setup/internal/core"
 	"setup/internal/steps/claude"
 	"setup/internal/steps/clitools"
+	"setup/internal/steps/git"
 	"setup/internal/steps/golang"
 	"setup/internal/steps/macos"
 	"setup/internal/steps/neovim"
@@ -20,6 +21,7 @@ var setupSteps = []core.Step{
 	packagemanager.New(),
 	shell.New(),
 	clitools.New(),
+	git.New(),
 	tmux.New(),
 	neovim.New(),
 	golang.New(),
