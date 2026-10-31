@@ -4,15 +4,23 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 
 	"setup/internal/core"
 )
 
-var statusLine = map[string]any{"type": "command", "command": "~/.claude/statusline.sh"}
+// Settings added to ~/.claude/settings.json when missing; existing values are kept
+var defaultSettings = map[string]any{
+	"statusLine": map[string]any{"type": "command", "command": "~/.claude/statusline.sh"},
+	"tui":        "fullscreen",
+}
 
-func statusLineSetting(_ context.Context, env *core.Env) (core.Plan, error) {
+func settingsDefaults(_ context.Context, env *core.Env) (core.Plan, error) {
 	path := env.HomePath(".claude/settings.json")
 	settings := map[string]any{}
 	raw, err := os.ReadFile(path)
@@ -24,13 +32,25 @@ func statusLineSetting(_ context.Context, env *core.Env) (core.Plan, error) {
 	case !errors.Is(err, os.ErrNotExist):
 		return core.Plan{}, err
 	}
-	if _, ok := settings["statusLine"]; ok {
-		return core.Plan{Done: []string{"statusLine configured in settings.json"}}, nil
+
+	var plan core.Plan
+	var missing []string
+	for _, key := range slices.Sorted(maps.Keys(defaultSettings)) {
+		if _, ok := settings[key]; ok {
+			plan.Done = append(plan.Done, key+" configured in settings.json")
+		} else {
+			missing = append(missing, key)
+		}
 	}
-	return core.Plan{Actions: []core.Action{{
-		Desc: "Add statusLine to ~/.claude/settings.json",
+	if len(missing) == 0 {
+		return plan, nil
+	}
+	plan.Actions = []core.Action{{
+		Desc: fmt.Sprintf("Add %s to ~/.claude/settings.json", strings.Join(missing, ", ")),
 		Do: func(context.Context, *core.Env) error {
-			settings["statusLine"] = statusLine
+			for _, key := range missing {
+				settings[key] = defaultSettings[key]
+			}
 			out, err := json.MarshalIndent(settings, "", "  ")
 			if err != nil {
 				return err
@@ -40,5 +60,6 @@ func statusLineSetting(_ context.Context, env *core.Env) (core.Plan, error) {
 			}
 			return os.WriteFile(path, append(out, '\n'), 0o600)
 		},
-	}}}, nil
+	}}
+	return plan, nil
 }

@@ -12,7 +12,7 @@ func New() core.Step {
 		tasks.Symlink("claude/commands", ".claude/commands"),
 		tasks.Symlink("claude/skills", ".claude/skills"),
 		tasks.Symlink("claude/statusline.sh", ".claude/statusline.sh"),
-		statusLineSetting,
+		settingsDefaults,
 		tasks.ByManager(tasks.Overrides{managers.Apt{}: tasks.Pkgs("jq")}),
 	}}
 }
