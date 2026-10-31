@@ -28,7 +28,7 @@ cd ~/dotfiles
 bash ./setup.sh
 ```
 
-`setup.sh` installs Go if needed and runs the setup program in `setup/`. It previews what it would change, asks once, and only touches what's missing or wrong, so it's safe to re-run on a machine set up with an older version. Pass `--keep-going` to report failed steps and continue with the rest, or `--skip <step>` (repeatable, case-insensitive, e.g. `--skip neovim --skip "cli tools"`) to leave steps out.
+`setup.sh` installs Go if needed and runs the setup program in `setup/`. It previews what it would change, asks once, and only touches what's missing or wrong, so it's safe to re-run on a machine set up with an older version. Pass `--keep-going` to report failed steps and continue with the rest, `--skip <step>` to leave steps out, or `--only <step>` to run just those steps (both repeatable and case-insensitive, e.g. `--only neovim --only "cli tools"`).
 
 The steps are listed in order in `setup/config.go`. Each one lives in its own folder under `setup/internal/steps/` and installs everything its tool needs: packages, clones, symlinks and settings. Package-manager specific handling goes in a file named after the manager (e.g. `steps/neovim/apt.go`).
 

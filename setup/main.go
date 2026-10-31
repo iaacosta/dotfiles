@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -16,21 +17,25 @@ import (
 
 func main() {
 	keepGoing := flag.Bool("keep-going", false, "report failed steps and continue with the next ones")
-	var skip []string
+	var only, skip []string
+	flag.Func("only", "run only the step with this name, case-insensitive (repeatable)", func(name string) error {
+		only = append(only, name)
+		return nil
+	})
 	flag.Func("skip", "skip the step with this name, case-insensitive (repeatable)", func(name string) error {
 		skip = append(skip, name)
 		return nil
 	})
 	flag.Parse()
 
-	if err := run(*keepGoing, skip); err != nil {
+	if err := run(*keepGoing, only, skip); err != nil {
 		fmt.Fprintln(os.Stderr, "setup:", err)
 		os.Exit(1)
 	}
 }
 
-func run(keepGoing bool, skip []string) error {
-	steps, err := skipSteps(setupSteps, skip)
+func run(keepGoing bool, only, skip []string) error {
+	steps, err := filterSteps(setupSteps, only, skip)
 	if err != nil {
 		return err
 	}
@@ -67,15 +72,26 @@ func run(keepGoing bool, skip []string) error {
 	return plans.Apply(ctx, env, keepGoing)
 }
 
-func skipSteps(steps []core.Step, skip []string) ([]core.Step, error) {
-	skipped := map[string]bool{}
-	for _, name := range skip {
-		if !slices.ContainsFunc(steps, func(s core.Step) bool { return strings.EqualFold(s.Name, name) }) {
-			return nil, fmt.Errorf("unknown step %q to skip", name)
-		}
-		skipped[strings.ToLower(name)] = true
+func filterSteps(steps []core.Step, only, skip []string) ([]core.Step, error) {
+	if len(only) > 0 && len(skip) > 0 {
+		return nil, errors.New("use --only or --skip, not both")
 	}
-	return slices.DeleteFunc(slices.Clone(steps), func(s core.Step) bool { return skipped[strings.ToLower(s.Name)] }), nil
+	named := map[string]bool{}
+	for _, name := range slices.Concat(only, skip) {
+		if !slices.ContainsFunc(steps, func(s core.Step) bool { return strings.EqualFold(s.Name, name) }) {
+			var known []string
+			for _, s := range steps {
+				known = append(known, s.Name)
+			}
+			return nil, fmt.Errorf("unknown step %q (steps: %s)", name, strings.Join(known, ", "))
+		}
+		named[strings.ToLower(name)] = true
+	}
+	// With --only, drop the steps that weren't named; with --skip, drop the ones that were
+	keepNamed := len(only) > 0
+	return slices.DeleteFunc(slices.Clone(steps), func(s core.Step) bool {
+		return len(named) > 0 && named[strings.ToLower(s.Name)] != keepNamed
+	}), nil
 }
 
 func confirm() bool {

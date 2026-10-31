@@ -64,21 +64,42 @@ func TestFreshMachinePlans(t *testing.T) {
 	}
 }
 
-func TestSkipSteps(t *testing.T) {
+func TestFilterSteps(t *testing.T) {
 	steps := []core.Step{{Name: "Shell"}, {Name: "CLI tools"}, {Name: "Neovim"}}
-
-	got, err := skipSteps(steps, []string{"cli TOOLS", "neovim"})
-	if err != nil {
-		t.Fatal(err)
+	cases := []struct {
+		name       string
+		only, skip []string
+		want       []string
+		wantErr    string
+	}{
+		{name: "no filter", want: []string{"Shell", "CLI tools", "Neovim"}},
+		{name: "skip", skip: []string{"cli TOOLS", "neovim"}, want: []string{"Shell"}},
+		{name: "only", only: []string{"neovim", "shell"}, want: []string{"Shell", "Neovim"}},
+		{name: "unknown step", skip: []string{"nvim"}, wantErr: "steps: Shell, CLI tools, Neovim"},
+		{name: "both flags", only: []string{"shell"}, skip: []string{"neovim"}, wantErr: "not both"},
 	}
-	if len(got) != 1 || got[0].Name != "Shell" {
-		t.Errorf("got %v, want only Shell", got)
-	}
-	if len(steps) != 3 {
-		t.Errorf("input steps were modified: %v", steps)
-	}
-
-	if _, err := skipSteps(steps, []string{"nvim"}); err == nil {
-		t.Error("expected an error for an unknown step")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := filterSteps(steps, tc.only, tc.skip)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("err %v, want %q", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			var names []string
+			for _, s := range got {
+				names = append(names, s.Name)
+			}
+			if strings.Join(names, ",") != strings.Join(tc.want, ",") {
+				t.Errorf("got %v, want %v", names, tc.want)
+			}
+			if len(steps) != 3 {
+				t.Errorf("input steps were modified: %v", steps)
+			}
+		})
 	}
 }

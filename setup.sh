@@ -2,7 +2,8 @@
 #
 # Bootstrap: make sure Go is available, then run the setup program in setup/.
 # Pass --keep-going to report failed steps and continue with the next ones,
-# or --skip <step> (repeatable) to leave a step out.
+# --skip <step> to leave a step out, or --only <step> to run just that one
+# (both repeatable).
 
 set -e
 
