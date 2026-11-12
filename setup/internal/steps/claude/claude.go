@@ -12,6 +12,7 @@ func New() core.Step {
 		tasks.Symlink("claude/commands", ".claude/commands"),
 		tasks.Symlink("claude/skills", ".claude/skills"),
 		tasks.Symlink("claude/statusline.sh", ".claude/statusline.sh"),
+		tasks.Symlink("bin/pr-review-digest", ".local/bin/pr-review-digest"),
 		settingsDefaults,
 		userMCPServers,
 		tasks.ByManager(tasks.Overrides{managers.Apt{}: tasks.Pkgs("jq")}),

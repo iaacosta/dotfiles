@@ -1,0 +1,249 @@
+#!/usr/bin/env bash
+# pr-review-digest: what reviewers said on a pull request, for Claude Code's pr-triage skill.
+# Read-only against GitHub (one GraphQL query per call or poll); local state only in $STATE_DIR.
+#
+#   pr-review-digest [PR] [--repo owner/name] [--format md|json] [--all]
+#   pr-review-digest [PR] --wait [--timeout SECS] [--ready-timeout SECS] [--interval SECS]
+#       waits until the PR is ready for review, then until a new review run finishes, then prints the digest
+#   pr-review-digest [PR] --status                  one line (SessionStart hook)
+#   pr-review-digest [PR] --bar                     a few words for the status bar ("#135 ready · 5 open")
+#   pr-review-digest [PR] --mark-seen               remember the review runs triaged so far
+#   pr-review-digest [PR] --record ID DECISION REASON
+#       remember a decision (done|skipped|deferred) on an item, so it stops showing as open
+#
+# Defaults: the repo of the current folder and the PR of the current branch.
+# Reviewer bot per GitHub owner: see reviewer_for below; PR_REVIEW_BOT and PR_REVIEW_DONE_MARKER override it
+# (set PR_REVIEW_BOT= to ignore any bot). Without a bot, a "review run" is any review by someone other than
+# the PR author.
+#
+# Exit codes: 0 printed, 2 bad arguments, 3 timed out waiting, 4 no PR, 5 PR closed or merged while waiting,
+# 6 the bot's review run failed while waiting.
+set -euo pipefail
+
+# GitHub owner -> "<bot login> <marker the bot writes when its review is finished>"
+reviewer_for() {
+  case "$1" in
+    grupalia) echo "grupalia-pr-reviewer pr-review-app:reviewed" ;;
+    *) echo "" ;;
+  esac
+}
+
+IGNORED='["linear-code","socket-security","github-actions"]'
+STATE_DIR="${PR_REVIEW_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/pr-review-digest}"
+
+usage() { sed -n '4,14p' "$0" >&2; exit 2; }
+
+pr="" repo="" format="md" mode="digest" show_all=false timeout="" ready_timeout=28800 interval=30
+rec_id="" rec_decision="" rec_reason=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --repo) repo="$2"; shift 2 ;;
+    --format) format="$2"; shift 2 ;;
+    --all) show_all=true; shift ;;
+    --wait) mode="wait"; shift ;;
+    --status) mode="status"; shift ;;
+    --bar) mode="bar"; shift ;;
+    --mark-seen) mode="mark"; shift ;;
+    --record) [ $# -ge 4 ] || usage; mode="record"; rec_id="$2"; rec_decision="$3"; rec_reason="$4"; shift 4 ;;
+    --timeout) timeout="$2"; shift 2 ;;
+    --ready-timeout) ready_timeout="$2"; shift 2 ;;
+    --interval) interval="$2"; shift 2 ;;
+    -h|--help) usage ;;
+    -*) usage ;;
+    *) pr="$1"; shift ;;
+  esac
+done
+
+[ -n "$repo" ] || repo="$(gh repo view --json nameWithOwner --jq .nameWithOwner)"
+[ -n "$pr" ] || pr="$(gh pr view --json number --jq .number 2>/dev/null)" || { echo "no PR for this branch" >&2; exit 4; }
+owner="${repo%/*}" name="${repo#*/}"
+seen_file="$STATE_DIR/$owner-$name-$pr.seen"
+ledger_file="$STATE_DIR/$owner-$name-$pr.ledger.jsonl"
+
+read -r default_bot default_marker <<<"$(reviewer_for "$owner")" || true
+BOT="${PR_REVIEW_BOT-${default_bot:-}}"
+MARKER="${PR_REVIEW_DONE_MARKER-${default_marker:-}}"
+# A bot answers in minutes; people take hours.
+[ -n "$timeout" ] || { if [ -n "$BOT" ]; then timeout=1200; else timeout=28800; fi; }
+
+fetch() {
+  gh api graphql -F owner="$owner" -F name="$name" -F number="$pr" -f query='
+    query($owner:String!, $name:String!, $number:Int!) {
+      repository(owner:$owner, name:$name) { pullRequest(number:$number) {
+        number title url state isDraft headRefOid headRefName baseRefName author{login}
+        comments(last:60) { nodes { databaseId author{login} body createdAt lastEditedAt url } }
+        reviews(last:60) { nodes { databaseId author{login} state body submittedAt url commit{oid} } }
+        reviewThreads(first:100) { nodes {
+          isResolved isOutdated path line originalLine
+          comments(first:30) { nodes { databaseId author{login} body url createdAt originalCommit{oid} pullRequestReview{databaseId} } }
+        } }
+      } }
+    }' --jq '.data.repository.pullRequest'
+}
+
+seen_json() { if [ -f "$seen_file" ]; then jq -R . "$seen_file" | jq -s 'map(select(. != ""))'; else echo '[]'; fi; }
+ledger_json() { if [ -f "$ledger_file" ]; then jq -s 'map({key: (.id | tostring), value: .}) | from_entries' "$ledger_file"; else echo '{}'; fi; }
+
+digest() {
+  jq --arg bot "$BOT" --arg marker "$MARKER" --argjson ignored "$IGNORED" \
+     --argjson seen "$(seen_json)" --argjson ledger "$(ledger_json)" '
+    def strip_tag: sub("^(🟡|💡|🔴)\\s*\\*\\*[A-Z]+\\*\\*\\s*"; "");
+    def severity: if test("^🔴") then "BLOCKER" elif test("^🟡") then "WARNING" elif test("^💡") then "SUGGESTION" else "COMMENT" end;
+    def summary: strip_tag | gsub("\r"; "") | split("\n\n") | (if (.[0] | length) < 25 and length > 1 then "\(.[0]): \(.[1])" else .[0] end) | gsub("\n"; " ") | (capture("^(?<s>.{40,}?[.?!])(\\s|$)").s // .) | .[0:220];
+    def ignored: (.author.login as $l | $ignored | index($l)) != null;
+    . as $pr
+    | (if $bot != "" then
+         [ .comments.nodes[] | select(.author.login == $bot)
+           | { id: (.databaseId | tostring), created_at: .createdAt, finished_at: .lastEditedAt, url,
+               done: ($marker != "" and (.body | contains($marker))),
+               failed: (.body | test("^❌")),
+               sha: ((.body | capture("\($marker) (?<sha>[0-9a-f]{40})").sha) // null),
+               claimed: ((.body | capture("(reviewed|second pass on) `[0-9a-f]+`( \\(last pass: `[0-9a-f]+`\\))?: (?<c>[^.]*)\\.").c) // null),
+               session: ((.body | capture("\\[Session\\]\\((?<u>[^)]+)\\)").u) // null) } ]
+       else
+         [ .reviews.nodes[] | select(.author.login != $pr.author.login) | select(ignored | not)
+           | { id: (.databaseId | tostring), created_at: .submittedAt, finished_at: .submittedAt, url,
+               done: true, failed: false, sha: .commit.oid, claimed: "\(.state | ascii_downcase) by \(.author.login)", session: null } ]
+       end
+       | map(.new = (.done and ((.id as $i | $seen | index($i)) == null)))) as $runs
+    | [ .reviewThreads.nodes[] | .comments.nodes[0] as $first
+        | select($first | ignored | not)
+        | { source: (if $first.author.login == $bot then "bot" elif $first.author.login == $pr.author.login then "self" else $first.author.login end),
+            severity: ($first.body | severity),
+            path, line: (.line // .originalLine), outdated: .isOutdated, resolved: .isResolved,
+            reviewed_sha: $first.originalCommit.oid,
+            replies: [ .comments.nodes[1:][] | { by: .author.login, body: (.body | .[0:200]) } ],
+            url: $first.url, id: ($first.databaseId | tostring),
+            summary: ($first.body | summary), body: ($first.body | strip_tag) } ] as $threads
+    | [ .reviews.nodes[]
+        | select(.body | sub("<!-- pr-review-app:review -->"; "") | test("\\S"))
+        | select(ignored | not)
+        | . as $r
+        | (if .author.login == $bot
+           then (.body | sub("<!-- pr-review-app:review -->\\s*"; "") | split("\n") | map(select(test("^- ")) | sub("^- "; "")))
+           else [.body] end)
+        | to_entries[]
+        | { source: (if $r.author.login == $bot then "bot" elif $r.author.login == $pr.author.login then "self" else $r.author.login end),
+            severity: (if $r.author.login == $bot then "NOTE" else "COMMENT" end),
+            path: null, line: null, outdated: false, resolved: false, reviewed_sha: $r.commit.oid,
+            replies: [], url: $r.url, id: "\($r.databaseId)-\(.key)", summary: (.value | summary), body: .value } ] as $notes
+    | { pr: { number, title, url, state, draft: .isDraft, head: .headRefOid, head_ref: .headRefName, base_ref: .baseRefName },
+        reviewer: (if $bot != "" then $bot else "any reviewer" end),
+        runs: $runs,
+        in_progress: ($runs | any((.done or .failed) | not)),
+        last_failed: (($runs | last | .failed) // false),
+        human_decisions: [ .reviews.nodes[] | select(.state == "APPROVED" or .state == "CHANGES_REQUESTED")
+                           | select(.author.login != $bot) | { by: .author.login, state, sha: .commit.oid[0:7] } ],
+        items: ( (reduce (($threads + $notes) | sort_by(.id))[] as $i ({c: {}, out: []}; (if $i.severity == "NOTE" then "n" elif $i.source == "bot" then "b" else $i.source[0:3] end) as $p | .c[$p] += 1 | .out += [$i + {key: "\($p)\(.c[$p])"}]) | .out)
+                 | map(.decided = ($ledger[.id] // null))
+                 | map(.open = ((.resolved | not) and .decided == null))
+                 | map(.rank = (if .source != "bot" and .source != "self" then 0
+                                elif .severity == "BLOCKER" then 1 elif .severity == "WARNING" then 2
+                                elif .severity == "SUGGESTION" then 3 else 4 end))
+                 | sort_by([(.open | not), .rank, .path // "~", .line // 0])
+                 | to_entries | map(.value + { n: (.key + 1) }) ) }'
+}
+
+add_fix_targets() {
+  local json="$1" base head
+  base="$(jq -r .pr.base_ref <<<"$json")"; head="$(jq -r .pr.head <<<"$json")"
+  if ! git rev-parse -q --verify "$head^{commit}" >/dev/null 2>&1 || ! git rev-parse -q --verify "origin/$base" >/dev/null 2>&1; then
+    echo "$json"; return
+  fi
+  local targets='{}' path line n sha
+  while IFS=$'\t' read -r n path line outdated; do
+    sha=""
+    if [ "$outdated" = "false" ] && [ "$line" != "null" ]; then
+      sha="$(git blame -L "$line,$line" --porcelain "$head" -- "$path" 2>/dev/null | head -1 | cut -d' ' -f1 || true)"
+      git merge-base --is-ancestor "origin/$base" "${sha:-x}" 2>/dev/null && [ "$(git rev-parse "origin/$base")" != "$sha" ] || sha=""
+    fi
+    if [ -n "$sha" ]; then
+      targets="$(jq --arg n "$n" --arg t "$(git log -1 --format='%h %s' "$sha")" '.[$n] = [$t]' <<<"$targets")"
+    else
+      targets="$(jq --arg n "$n" --arg t "$(git log --format='%h %s' "origin/$base..$head" -- "$path")" '.[$n] = ($t | split("\n") | map(select(. != "")))' <<<"$targets")"
+    fi
+  done < <(jq -r '.items[] | select(.open) | select(.path != null) | [.n, .path, .line, .outdated] | @tsv' <<<"$json")
+  jq --argjson t "$targets" '.items |= map(.fix_in = ($t[.n | tostring] // []))' <<<"$json"
+}
+
+render_md() {
+  jq -r --argjson all "$show_all" '
+    def loc: if .path then "\(.path):\(.line // "?")" + (if .outdated then " (outdated)" else "" end) else "general note" end;
+    def item: "\(.key)  [\(if .source == "bot" then .severity else "\(.source) \(.severity)" end)] \(loc)"
+      + (if .decided then "  (\(.decided.decision): \(.decided.reason))" else "" end)
+      + (if (.fix_in // []) | length == 1 then "\n   fix in: \(.fix_in[0])" elif (.fix_in // []) | length > 1 then "\n   touches: \(.fix_in | map(.[0:9]) | join(", "))" else "" end)
+      + "\n   \(.summary)"
+      + (if .replies | length > 0 then "\n   replies: " + (.replies | map("\(.by): \(.body | gsub("\n"; " ") | .[0:90])") | join(" | ")) else "" end)
+      + "\n   \(.url)";
+    (.items | map(select(.open))) as $open
+    | (.items | map(select(.open | not))) as $closed
+    | "PR #\(.pr.number) \(.pr.title)",
+      "head \(.pr.head[0:7]) on \(.pr.head_ref) -> \(.pr.base_ref)" + (if .pr.draft then " (draft)" else "" end) + (if .pr.state != "OPEN" then " (\(.pr.state | ascii_downcase))" else "" end),
+      (.runs[] | if .done then "review run: \(.claimed // "reviewed \(.sha[0:7])")" + (if .new then " (NEW)" else "" end) + (if .session then " \(.session)" else "" end) elif .failed then "review run: failed at \(.finished_at // .created_at)" + (if .session then " \(.session)" else "" end) else "review run: in progress since \(.created_at)" end),
+      (.runs | map(select(.done)) | last | select(. != null) | .sha) as $sha
+      | (if $sha and ($sha != .pr.head) then "note: the review was of \($sha[0:7]); head is now \(.pr.head[0:7])." else empty end),
+      (.human_decisions[] | "\(.by): \(.state) on \(.sha)"),
+      "",
+      "Open: \($open | length)   Resolved or decided: \($closed | length)",
+      ($open[] | item),
+      (if $all then ("", "Resolved or decided:", ($closed[] | item)) else empty end)'
+}
+
+status_line() {
+  jq -r 'select(.pr.state == "OPEN") | (.items | map(select(.open))) as $o
+    | "#\(.pr.number): " + (if .pr.draft then "draft" elif .in_progress then "bot reviewing" elif .last_failed then "last bot review failed" elif (.runs | any(.new)) then "new review" else "no new review" end)
+      + ", \($o | length) open (\($o | map(select(.source != "bot" and .source != "self")) | length) human, \($o | map(select(.severity == "WARNING" or .severity == "BLOCKER")) | length) warning)"'
+}
+
+status_bar() {
+  jq -r 'select(.pr.state == "OPEN") | (.items | map(select(.open)) | length) as $n
+    | "#\(.pr.number) " + (if .pr.draft then "draft" elif .in_progress then "reviewing" elif .last_failed then "review failed" elif (.runs | any(.new)) then "new review" else "ready" end)
+      + (if $n > 0 then " · \($n) open" else "" end)'
+}
+
+case "$mode" in
+  digest)
+    json="$(add_fix_targets "$(fetch | digest)")"
+    if [ "$format" = "json" ]; then echo "$json"; else render_md <<<"$json"; fi ;;
+  status) fetch | digest | status_line ;;
+  bar) fetch | digest | status_bar ;;
+  mark)
+    mkdir -p "$STATE_DIR"
+    fetch | digest | jq -r '.runs[] | select(.done) | .id' | sort -u > "$seen_file"
+    echo "marked $(wc -l < "$seen_file" | tr -d ' ') review run(s) as seen in $seen_file" ;;
+  record)
+    case "$rec_decision" in done|skipped|deferred) ;; *) echo "decision must be done, skipped or deferred" >&2; exit 2 ;; esac
+    mkdir -p "$STATE_DIR"
+    jq -nc --arg id "$rec_id" --arg decision "$rec_decision" --arg reason "$rec_reason" --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      '{id: $id, decision: $decision, reason: $reason, date: $date}' >> "$ledger_file"
+    echo "recorded $rec_decision for $rec_id in $ledger_file" ;;
+  wait)
+    start=$(date +%s); ready_since=""; last=""; failed_before=""; first=true
+    while :; do
+      json="$(fetch | digest 2>/dev/null || true)"
+      if [ -n "$json" ]; then
+        pr_state="$(jq -r .pr.state <<<"$json")"
+        if [ "$pr_state" != "OPEN" ]; then echo "PR #$pr is $(printf %s "$pr_state" | tr "[:upper:]" "[:lower:]"); stopped waiting" >&2; exit 5; fi
+        if jq -e '.runs | any(.new)' >/dev/null <<<"$json"; then
+          render_md <<<"$(add_fix_targets "$json")"; exit 0
+        fi
+        failed_now="$(jq -r '[.runs[] | select(.failed) | .id] | join(",")' <<<"$json")"
+        if $first; then failed_before="$failed_now"; first=false
+        elif [ "$failed_now" != "$failed_before" ]; then echo "PR #$pr: the $(jq -r .reviewer <<<"$json") run failed; stopped waiting" >&2; exit 6; fi
+        if jq -e .pr.draft >/dev/null <<<"$json"; then
+          state="draft (waiting for it to be marked ready)"
+        else
+          [ -n "$ready_since" ] || ready_since=$(date +%s)
+          state="$(jq -r --arg r "$(jq -r .reviewer <<<"$json")" 'if .in_progress then "\($r) reviewing" else "ready, waiting for \($r)" end' <<<"$json")"
+        fi
+        [ "$state" = "$last" ] || { echo "$(date +%H:%M:%S) #$pr: $state" >&2; last="$state"; }
+      fi
+      now=$(date +%s)
+      if [ -z "$ready_since" ]; then
+        [ $(( now - start )) -lt "$ready_timeout" ] || { echo "timed out after ${ready_timeout}s; PR #$pr still a draft" >&2; exit 3; }
+      else
+        [ $(( now - ready_since )) -lt "$timeout" ] || { echo "timed out ${timeout}s after the PR was ready; last state: ${last:-unknown}" >&2; exit 3; }
+      fi
+      sleep "$interval"
+    done ;;
+esac
