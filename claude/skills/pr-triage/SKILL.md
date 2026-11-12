@@ -3,7 +3,9 @@ name: pr-triage
 description: Watch a pull request until its review lands, then triage the review comments. Use right after opening a PR (gh pr create, non-draft), marking one ready (gh pr ready) or asking for a re-review (an "@grupalia-devs review" comment); when a background pr-review-digest watcher exits; or when the session starts with a "#<PR>: new review" or "N open" line.
 ---
 
-`pr-review-digest` (in `~/.local/bin`, source in `~/dotfiles/bin`) does all the GitHub work: waiting, the digest, and the seen/decision state in `~/.local/state/pr-review-digest/`. It defaults to the current repo and the current branch's PR. Never poll GitHub yourself, and never spend an agent on waiting.
+`pr-review-digest` (in `~/.local/bin`, source in `~/dotfiles/bin`) does all the GitHub work: waiting, the digest, replies, resolving and reactions, and the seen/decision state in `~/.local/state/pr-review-digest/`. It defaults to the current repo and the current branch's PR. Never poll GitHub yourself, and never spend an agent on waiting.
+
+The flow: open the PR, wait for the review (1), triage it (2), apply the picked fixes (3), record every item (4), answer the threads (5), and the user force-pushes.
 
 ## 1. Start the watcher
 
@@ -41,7 +43,7 @@ The watcher dies with the session. The SessionStart hook and the status bar (`#1
 - Load the `git-committing` skill first.
 - Fold each fix into the commit that introduced the code: `git commit --fixup=<fix_in sha>`. A new commit is only for genuinely new scope. When two fixes target different commits but touch the same file, commit them in separate rounds instead of splitting hunks.
 - Run the affected specs and lint, then `GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash origin/<base>`.
-- Don't push. Tell the user the branch is ready for `git push --force-with-lease`.
+- Don't push yet: the threads get answered first (step 5).
 
 ## 4. Record every item
 
@@ -51,4 +53,23 @@ Record a decision on every open item, picked or not, so it stops showing as open
 pr-review-digest <PR> --record <id> done|skipped|deferred "<short reason>"
 ```
 
-Don't reply to or resolve the GitHub threads unless the user asks.
+## 5. Answer the threads
+
+Once every item is recorded, draft what goes on GitHub, one line per item, and show it to the user. Post nothing before they say OK.
+
+| Decision | On GitHub |
+|---|---|
+| done | resolve; react `up` when the comment was right. Reply only when the fix differs from what the comment suggested, saying what changed instead |
+| skipped | reply with the reason; react `down` when the comment was wrong; resolve |
+| deferred | reply saying where it lands (a later branch, PR or issue); resolve |
+| general note (no thread) | nothing: the reviewer's overview and other non-specific comments get no answer on GitHub, only the recorded decision |
+
+Replies are one or two sentences in Spanish, in the user's informal voice, no emojis. Name the change by what it does or by commit subject, never by SHA: the force push changes them.
+
+```
+pr-review-digest <PR> --reply <id> "<text>"
+pr-review-digest <PR> --react <id> up|down
+pr-review-digest <PR> --resolve <id>
+```
+
+Then tell the user the branch is ready for `git push --force-with-lease`.
