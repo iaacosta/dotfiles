@@ -31,9 +31,24 @@ resets=$(echo "$input" | jq -r '.rate_limits.five_hour.resets_at // empty')
 reset_time=""
 [[ -n $resets ]] && reset_time=$(date -d "@$resets" +%H:%M 2>/dev/null || date -r "$resets" +%H:%M)
 
+pr_bar() {
+  command -v pr-review-digest >/dev/null || return
+  local cache_dir="${XDG_STATE_HOME:-$HOME/.local/state}/pr-review-digest/bar"
+  local cache="$cache_dir/$(printf '%s@%s' "$dir" "$branch" | tr -c 'A-Za-z0-9._-' '_')"
+  mkdir -p "$cache_dir"
+  if [[ -z $(find "$cache" -mmin -1 2>/dev/null) ]]; then
+    touch "$cache"
+    (cd "${dir:-.}" && pr-review-digest --bar >"$cache.tmp" 2>/dev/null; mv "$cache.tmp" "$cache") >/dev/null 2>&1 &
+  fi
+  cat "$cache" 2>/dev/null
+}
+
+[[ -n $branch ]] && pr=$(pr_bar)
+
 sep="  ◆  "
 line="$model"
 [[ -n $branch ]] && line+="${sep}$branch"
+[[ -n $pr ]] && line+=" $pr"
 line+="${sep}$bar ${used}% of ${size_label}${sep}\$${cost}"
 if [[ -n $limit ]]; then
   line+="${sep}5h $(make_bar "$limit") ${limit}%"
