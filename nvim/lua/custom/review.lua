@@ -10,6 +10,12 @@ local M = {}
 local ns = vim.api.nvim_create_namespace 'custom-review'
 local archive_ttl = 30 * 24 * 60 * 60
 
+-- Underline rather than a background so it composes with diff highlights
+local function set_highlights()
+  vim.api.nvim_set_hl(0, 'ReviewSelection', { default = true, link = 'DiagnosticUnderlineInfo' })
+end
+set_highlights()
+
 ---@type { root: string, git_dir: string, review: { branch: string, started_at: string, comments: table[] } }?
 local state = nil
 local subjects = {}
@@ -168,6 +174,16 @@ local function render(bufnr)
       for line = c.line_start, last do
         vim.api.nvim_buf_set_extmark(bufnr, ns, line - 1, 0, { sign_text = '▎', sign_hl_group = 'DiagnosticSignInfo' })
       end
+      -- Skipped when the buffer no longer reaches the end of the selection
+      if c.col_start and last == c.line_end then
+        vim.api.nvim_buf_set_extmark(bufnr, ns, c.line_start - 1, c.col_start, {
+          end_row = c.line_end - 1,
+          end_col = c.col_end,
+          hl_group = 'ReviewSelection',
+          priority = 200,
+          strict = false,
+        })
+      end
       local virt_lines = {}
       for _, text in ipairs(wrap(c.body, text_width(bufnr))) do
         table.insert(virt_lines, { { comment_prefix .. text, 'DiagnosticVirtualTextInfo' } })
@@ -309,7 +325,10 @@ function M.start()
   notify('Review started on ' .. state.review.branch)
 end
 
-function M.comment(line_start, line_end)
+-- `range` defaults to the cursor line; `col_start`/`col_end` (0-based bytes, end
+-- exclusive) narrow it to the characters highlighted in a charwise selection
+---@param range? { line_start: integer, line_end: integer, col_start?: integer, col_end?: integer }
+function M.comment(range)
   if not require_active() then
     return
   end
@@ -319,8 +338,11 @@ function M.comment(line_start, line_end)
     notify('This buffer is not part of the repository', vim.log.levels.WARN)
     return
   end
-  line_start = line_start or vim.fn.line '.'
-  line_end = line_end or line_start
+  local line_start = range and range.line_start or vim.fn.line '.'
+  local line_end = range and range.line_end or line_start
+  local col_start, col_end = range and range.col_start, range and range.col_end
+  local selection = col_start
+    and table.concat(vim.api.nvim_buf_get_text(bufnr, line_start - 1, col_start, line_end - 1, col_end, {}), '\n')
   open_editor('Comment', '', function(body)
     table.insert(state.review.comments, {
       path = id.path,
@@ -330,6 +352,9 @@ function M.comment(line_start, line_end)
       subject = subject(id.commit),
       line_start = line_start,
       line_end = line_end,
+      col_start = col_start,
+      col_end = col_end,
+      selection = selection,
       filetype = vim.bo[bufnr].filetype,
       snippet = table.concat(vim.api.nvim_buf_get_lines(bufnr, line_start - 1, line_end, false), '\n'),
       body = body,
@@ -388,6 +413,8 @@ function M.list()
       filename = state.root .. '/' .. c.path,
       lnum = c.line_start,
       end_lnum = c.line_end,
+      col = c.col_start and c.col_start + 1,
+      end_col = c.col_end and c.col_end + 1,
       text = ('[%s] %s'):format(c.rev == 'local' and 'local' or c.rev:sub(1, 7), vim.split(c.body, '\n')[1]),
     })
   end
@@ -442,9 +469,16 @@ function M.export()
         fence .. c.filetype,
         c.snippet,
         fence,
-        '',
-        c.body,
       })
+      if c.selection then
+        if c.selection:find '\n' then
+          vim.list_extend(out, { '', 'On:', '', fence .. c.filetype, c.selection, fence })
+        else
+          local code = c.selection:find '`' and ('`` ' .. c.selection .. ' ``') or ('`' .. c.selection .. '`')
+          vim.list_extend(out, { '', 'On ' .. code })
+        end
+      end
+      vim.list_extend(out, { '', c.body })
     end
   end
   return table.concat(out, '\n') .. '\n'
@@ -530,6 +564,7 @@ vim.api.nvim_create_autocmd('VimEnter', {
     end
   end,
 })
+vim.api.nvim_create_autocmd('ColorScheme', { group = group, callback = set_highlights })
 vim.api.nvim_create_autocmd('BufWinEnter', {
   group = group,
   callback = function(args)
@@ -561,11 +596,26 @@ vim.keymap.set('n', '<leader>rs', M.start, { desc = '[R]eview [S]tart' })
 vim.keymap.set('n', '<leader>rc', function()
   M.comment()
 end, { desc = '[R]eview [C]omment' })
+-- Linewise (V) comments on whole lines, charwise (v) also highlights the selected text
 vim.keymap.set('x', '<leader>rc', function()
-  local line_start, line_end = vim.fn.line 'v', vim.fn.line '.'
+  local charwise = vim.fn.mode() == 'v'
+  local from, to = vim.fn.getpos 'v', vim.fn.getpos '.'
   vim.cmd 'normal! \27'
-  M.comment(math.min(line_start, line_end), math.max(line_start, line_end))
-end, { desc = '[R]eview [C]omment range' })
+  if from[2] > to[2] or (from[2] == to[2] and from[3] > to[3]) then
+    from, to = to, from
+  end
+  local range = { line_start = from[2], line_end = to[2] }
+  if charwise then
+    local last = vim.fn.getline(to[2])
+    local col_start = math.min(from[3] - 1, #vim.fn.getline(from[2]))
+    -- getpos points at the first byte of the last character, extend over all of it
+    local col_end = to[3] > #last and #last or to[3] + vim.str_utf_end(last, to[3])
+    if range.line_start < range.line_end or col_start < col_end then
+      range.col_start, range.col_end = col_start, col_end
+    end
+  end
+  M.comment(range)
+end, { desc = '[R]eview [C]omment selection' })
 vim.keymap.set('n', '<leader>re', M.edit, { desc = '[R]eview [E]dit comment' })
 vim.keymap.set('n', '<leader>rd', M.delete, { desc = '[R]eview [D]elete comment' })
 vim.keymap.set('n', '<leader>rn', M.note, { desc = '[R]eview general [N]ote' })
