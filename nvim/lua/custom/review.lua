@@ -158,6 +158,33 @@ local function text_width(bufnr)
   return math.max(20, math.min(100, info.width - info.textoff - vim.fn.strdisplaywidth(comment_prefix)))
 end
 
+-- Conventional comments (conventionalcomments.org) labels, in <Tab> cycling order
+local labels = { 'suggestion', 'issue', 'question', 'nitpick', 'thought', 'praise' }
+local last_label = labels[1]
+local severity = { suggestion = 'Info', issue = 'Warn', question = 'Hint', thought = 'Hint', praise = 'Ok' }
+
+-- Sign, virtual text and plain text highlights; anything blocking reads as an error
+local function comment_hl(c)
+  if c.label == 'nitpick' and not c.blocking then
+    return 'Comment', 'Comment', 'Comment'
+  end
+  local sev = c.blocking and 'Error' or severity[c.label] or 'Info'
+  return 'DiagnosticSign' .. sev, 'DiagnosticVirtualText' .. sev, 'Diagnostic' .. sev
+end
+
+-- "issue (blocking)", or nil for comments made before labels existed
+local function decoration(c)
+  if not c.label then
+    return nil
+  end
+  return c.blocking and (c.label .. ' (blocking)') or c.label
+end
+
+local function labeled_body(c)
+  local d = decoration(c)
+  return d and (d .. ': ' .. c.body) or c.body
+end
+
 local function render(bufnr)
   if not vim.api.nvim_buf_is_valid(bufnr) then
     return
@@ -171,8 +198,9 @@ local function render(bufnr)
   for _, c in ipairs(state.review.comments) do
     if c.path == id.path and c.rev == id.rev and c.line_start <= line_count then
       local last = math.min(c.line_end, line_count)
+      local sign_hl, text_hl = comment_hl(c)
       for line = c.line_start, last do
-        vim.api.nvim_buf_set_extmark(bufnr, ns, line - 1, 0, { sign_text = '▎', sign_hl_group = 'DiagnosticSignInfo' })
+        vim.api.nvim_buf_set_extmark(bufnr, ns, line - 1, 0, { sign_text = '▎', sign_hl_group = sign_hl })
       end
       -- Skipped when the buffer no longer reaches the end of the selection
       if c.col_start and last == c.line_end then
@@ -185,8 +213,8 @@ local function render(bufnr)
         })
       end
       local virt_lines = {}
-      for _, text in ipairs(wrap(c.body, text_width(bufnr))) do
-        table.insert(virt_lines, { { comment_prefix .. text, 'DiagnosticVirtualTextInfo' } })
+      for _, text in ipairs(wrap(labeled_body(c), text_width(bufnr))) do
+        table.insert(virt_lines, { { comment_prefix .. text, text_hl } })
       end
       vim.api.nvim_buf_set_extmark(bufnr, ns, last - 1, 0, { virt_lines = virt_lines })
     end
@@ -202,9 +230,21 @@ end
 
 -- Comment editor -------------------------------------------------------------
 
--- Calls on_save with the trimmed body; an empty body is only passed through with
--- `allow_empty`, so callers can treat it as "remove"
-local function open_editor(title, initial, on_save, allow_empty)
+-- Calls on_save with the trimmed body and the chosen label; an empty body is only
+-- passed through with `allow_empty`, so callers can treat it as "remove". With
+-- `label`, <Tab>/<S-Tab> cycle the label and ! toggles blocking (normal mode).
+---@param opts? { allow_empty?: boolean, label?: { label: string, blocking: boolean } }
+local function open_editor(title, initial, on_save, opts)
+  opts = opts or {}
+  local meta = opts.label and vim.deepcopy(opts.label)
+  local function win_title()
+    if not meta then
+      return ' ' .. title .. ' '
+    end
+    local _, _, label_hl = comment_hl(meta)
+    return { { ' ' .. title .. ' · ', 'FloatTitle' }, { decoration(meta), label_hl }, { ' ', 'FloatTitle' } }
+  end
+
   local buf = vim.api.nvim_create_buf(false, true)
   vim.bo[buf].buftype = 'acwrite'
   vim.bo[buf].bufhidden = 'wipe'
@@ -221,9 +261,9 @@ local function open_editor(title, initial, on_save, allow_empty)
     width = math.min(80, vim.o.columns - 4),
     height = 8,
     border = 'rounded',
-    title = ' ' .. title .. ' ',
+    title = win_title(),
     title_pos = 'center',
-    footer = ' <C-s> or :w save · q cancel ',
+    footer = (meta and ' <Tab> label · ! blocking ·' or '') .. ' <C-s> or :w save · q cancel ',
     footer_pos = 'center',
   })
   vim.wo[win].linebreak = true
@@ -244,9 +284,28 @@ local function open_editor(title, initial, on_save, allow_empty)
     vim.bo[buf].modified = false
     -- Deferred so `:wq` can close the float itself instead of the window below it
     vim.schedule(close)
-    if body ~= '' or allow_empty then
-      on_save(body)
+    if body ~= '' or opts.allow_empty then
+      on_save(body, meta)
     end
+  end
+
+  if meta then
+    local function refresh()
+      vim.api.nvim_win_set_config(win, { title = win_title(), title_pos = 'center' })
+    end
+    local function cycle(step)
+      return function()
+        local i = vim.fn.index(labels, meta.label)
+        meta.label = labels[(i + step) % #labels + 1]
+        refresh()
+      end
+    end
+    vim.keymap.set('n', '<Tab>', cycle(1), { buffer = buf })
+    vim.keymap.set('n', '<S-Tab>', cycle(-1), { buffer = buf })
+    vim.keymap.set('n', '!', function()
+      meta.blocking = not meta.blocking
+      refresh()
+    end, { buffer = buf })
   end
 
   vim.api.nvim_create_autocmd('BufWriteCmd', { buffer = buf, callback = save })
@@ -291,7 +350,7 @@ local function with_comment_at_cursor(cb)
     vim.ui.select(found, {
       prompt = 'Comment',
       format_item = function(c)
-        return vim.split(c.body, '\n')[1]
+        return vim.split(labeled_body(c), '\n')[1]
       end,
     }, function(c)
       if c then
@@ -343,8 +402,11 @@ function M.comment(range)
   local col_start, col_end = range and range.col_start, range and range.col_end
   local selection = col_start
     and table.concat(vim.api.nvim_buf_get_text(bufnr, line_start - 1, col_start, line_end - 1, col_end, {}), '\n')
-  open_editor('Comment', '', function(body)
+  open_editor('Comment', '', function(body, meta)
+    last_label = meta.label
     table.insert(state.review.comments, {
+      label = meta.label,
+      blocking = meta.blocking,
       path = id.path,
       rev = id.rev,
       side = id.side,
@@ -361,7 +423,7 @@ function M.comment(range)
     })
     persist()
     render_visible()
-  end)
+  end, { label = { label = last_label, blocking = false } })
 end
 
 function M.edit()
@@ -369,11 +431,11 @@ function M.edit()
     return
   end
   with_comment_at_cursor(function(c)
-    open_editor('Edit comment', c.body, function(body)
-      c.body = body
+    open_editor('Edit comment', c.body, function(body, meta)
+      c.body, c.label, c.blocking = body, meta.label, meta.blocking
       persist()
       render_visible()
-    end)
+    end, { label = { label = c.label or last_label, blocking = c.blocking or false } })
   end)
 end
 
@@ -400,7 +462,7 @@ function M.note()
     state.review.note = body ~= '' and body or nil
     persist()
     vim.cmd 'redrawstatus!'
-  end, true)
+  end, { allow_empty = true })
 end
 
 function M.list()
@@ -415,22 +477,64 @@ function M.list()
       end_lnum = c.line_end,
       col = c.col_start and c.col_start + 1,
       end_col = c.col_end and c.col_end + 1,
-      text = ('[%s] %s'):format(c.rev == 'local' and 'local' or c.rev:sub(1, 7), vim.split(c.body, '\n')[1]),
+      text = ('[%s] %s'):format(c.rev == 'local' and 'local' or c.rev:sub(1, 7), vim.split(labeled_body(c), '\n')[1]),
     })
   end
   vim.fn.setqflist({}, ' ', { title = 'Review comments', items = items })
   vim.cmd 'copen'
 end
 
-function M.export()
-  local groups, order = {}, {}
-  for _, c in ipairs(state.review.comments) do
-    local key = c.commit or 'worktree'
-    if not groups[key] then
-      groups[key] = {}
-      table.insert(order, key)
+local function by_location(a, b)
+  if a.path ~= b.path then
+    return a.path < b.path
+  end
+  return a.line_start < b.line_start
+end
+
+-- Markdown for one comment; `notes` adds context to its heading
+local function export_comment(c, notes)
+  local lines = c.line_start == c.line_end and c.line_start or (c.line_start .. '-' .. c.line_end)
+  notes = vim.list_extend({}, notes or {})
+  if c.side == 'old' then
+    table.insert(notes, 'old side')
+  end
+  if c.rev:match '^stage' then
+    table.insert(notes, 'staged')
+  end
+  local fence = c.snippet:find '```' and '````' or '```'
+  local out = {
+    '',
+    ('### %s:%s%s'):format(c.path, lines, #notes > 0 and (' (' .. table.concat(notes, ', ') .. ')') or ''),
+    '',
+    fence .. c.filetype,
+    c.snippet,
+    fence,
+  }
+  if c.selection then
+    if c.selection:find '\n' then
+      vim.list_extend(out, { '', 'On:', '', fence .. c.filetype, c.selection, fence })
+    else
+      local code = c.selection:find '`' and ('`` ' .. c.selection .. ' ``') or ('`' .. c.selection .. '`')
+      vim.list_extend(out, { '', 'On ' .. code })
     end
-    table.insert(groups[key], c)
+  end
+  vim.list_extend(out, { '', labeled_body(c) })
+  return out
+end
+
+function M.export()
+  local groups, order, praise = {}, {}, {}
+  for _, c in ipairs(state.review.comments) do
+    if c.label == 'praise' then
+      table.insert(praise, c)
+    else
+      local key = c.commit or 'worktree'
+      if not groups[key] then
+        groups[key] = {}
+        table.insert(order, key)
+      end
+      table.insert(groups[key], c)
+    end
   end
 
   local out = {
@@ -443,42 +547,24 @@ function M.export()
   end
   for _, key in ipairs(order) do
     local group = groups[key]
-    table.sort(group, function(a, b)
-      if a.path ~= b.path then
-        return a.path < b.path
-      end
-      return a.line_start < b.line_start
-    end)
-    local first = group[1]
+    table.sort(group, by_location)
     table.insert(out, '')
-    table.insert(out, key == 'worktree' and '## Working tree' or ('## %s %s'):format(key:sub(1, 7), first.subject))
+    table.insert(out, key == 'worktree' and '## Working tree' or ('## %s %s'):format(key:sub(1, 7), group[1].subject))
     for _, c in ipairs(group) do
-      local lines = c.line_start == c.line_end and c.line_start or (c.line_start .. '-' .. c.line_end)
-      local notes = {}
-      if c.side == 'old' then
-        table.insert(notes, 'old side')
-      end
-      if c.rev:match '^stage' then
-        table.insert(notes, 'staged')
-      end
-      local fence = c.snippet:find '```' and '````' or '```'
-      vim.list_extend(out, {
-        '',
-        ('### %s:%s%s'):format(c.path, lines, #notes > 0 and (' (' .. table.concat(notes, ', ') .. ')') or ''),
-        '',
-        fence .. c.filetype,
-        c.snippet,
-        fence,
-      })
-      if c.selection then
-        if c.selection:find '\n' then
-          vim.list_extend(out, { '', 'On:', '', fence .. c.filetype, c.selection, fence })
-        else
-          local code = c.selection:find '`' and ('`` ' .. c.selection .. ' ``') or ('`' .. c.selection .. '`')
-          vim.list_extend(out, { '', 'On ' .. code })
-        end
-      end
-      vim.list_extend(out, { '', c.body })
+      vim.list_extend(out, export_comment(c))
+    end
+  end
+  -- Last, so the actionable comments come first
+  if #praise > 0 then
+    table.sort(praise, by_location)
+    vim.list_extend(out, {
+      '',
+      '## Keep doing',
+      '',
+      'No changes needed. These are patterns I want to see more of; if one generalizes beyond this change, remember it for future work.',
+    })
+    for _, c in ipairs(praise) do
+      vim.list_extend(out, export_comment(c, { c.commit and c.commit:sub(1, 7) }))
     end
   end
   return table.concat(out, '\n') .. '\n'
