@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # pr-review-digest: what reviewers said on a pull request, for Claude Code's pr-triage skill.
-# Read-only against GitHub (one GraphQL query per call or poll); local state only in $STATE_DIR.
+# Reads GitHub with one GraphQL query per call or poll; writes to it only with --reply, --resolve and --react.
+# Local state only in $STATE_DIR.
 #
 #   pr-review-digest [PR] [--repo owner/name] [--format md|json] [--all]
 #   pr-review-digest [PR] --wait [--timeout SECS] [--ready-timeout SECS] [--interval SECS]
@@ -10,6 +11,9 @@
 #   pr-review-digest [PR] --mark-seen               remember the review runs triaged so far
 #   pr-review-digest [PR] --record ID DECISION REASON
 #       remember a decision (done|skipped|deferred) on an item, so it stops showing as open
+#   pr-review-digest [PR] --reply ID TEXT           reply in the item's thread
+#   pr-review-digest [PR] --resolve ID              resolve the item's thread
+#   pr-review-digest [PR] --react ID up|down        thumbs up or down on the item's first comment
 #
 # Defaults: the repo of the current folder and the PR of the current branch.
 # Reviewer bot per GitHub owner: see reviewer_for below; PR_REVIEW_BOT and PR_REVIEW_DONE_MARKER override it
@@ -31,10 +35,10 @@ reviewer_for() {
 IGNORED='["linear-code","socket-security","github-actions"]'
 STATE_DIR="${PR_REVIEW_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/pr-review-digest}"
 
-usage() { sed -n '4,14p' "$0" >&2; exit 2; }
+usage() { sed -n '5,18p' "$0" >&2; exit 2; }
 
 pr="" repo="" format="md" mode="digest" show_all=false timeout="" ready_timeout=28800 interval=30
-rec_id="" rec_decision="" rec_reason=""
+rec_id="" rec_decision="" rec_reason="" act_id="" act_arg=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --repo) repo="$2"; shift 2 ;;
@@ -45,6 +49,9 @@ while [ $# -gt 0 ]; do
     --bar) mode="bar"; shift ;;
     --mark-seen) mode="mark"; shift ;;
     --record) [ $# -ge 4 ] || usage; mode="record"; rec_id="$2"; rec_decision="$3"; rec_reason="$4"; shift 4 ;;
+    --reply) [ $# -ge 3 ] || usage; mode="reply"; act_id="$2"; act_arg="$3"; shift 3 ;;
+    --resolve) [ $# -ge 2 ] || usage; mode="resolve"; act_id="$2"; shift 2 ;;
+    --react) [ $# -ge 3 ] || usage; mode="react"; act_id="$2"; act_arg="$3"; shift 3 ;;
     --timeout) timeout="$2"; shift 2 ;;
     --ready-timeout) ready_timeout="$2"; shift 2 ;;
     --interval) interval="$2"; shift 2 ;;
@@ -74,8 +81,8 @@ fetch() {
         comments(last:60) { nodes { databaseId author{login} body createdAt lastEditedAt url } }
         reviews(last:60) { nodes { databaseId author{login} state body submittedAt url commit{oid} } }
         reviewThreads(first:100) { nodes {
-          isResolved isOutdated path line originalLine
-          comments(first:30) { nodes { databaseId author{login} body url createdAt originalCommit{oid} pullRequestReview{databaseId} } }
+          id isResolved isOutdated path line originalLine
+          comments(first:30) { nodes { id databaseId author{login} body url createdAt originalCommit{oid} pullRequestReview{databaseId} } }
         } }
       } }
     }' --jq '.data.repository.pullRequest'
@@ -113,7 +120,7 @@ digest() {
             path, line: (.line // .originalLine), outdated: .isOutdated, resolved: .isResolved,
             reviewed_sha: $first.originalCommit.oid,
             replies: [ .comments.nodes[1:][] | { by: .author.login, body: (.body | .[0:200]) } ],
-            url: $first.url, id: ($first.databaseId | tostring),
+            url: $first.url, id: ($first.databaseId | tostring), thread_id: .id, node_id: $first.id,
             summary: ($first.body | summary), body: ($first.body | strip_tag) } ] as $threads
     | [ .reviews.nodes[]
         | select(.body | sub("<!-- pr-review-app:review -->"; "") | test("\\S"))
@@ -126,7 +133,8 @@ digest() {
         | { source: (if $r.author.login == $bot then "bot" elif $r.author.login == $pr.author.login then "self" else $r.author.login end),
             severity: (if $r.author.login == $bot then "NOTE" else "COMMENT" end),
             path: null, line: null, outdated: false, resolved: false, reviewed_sha: $r.commit.oid,
-            replies: [], url: $r.url, id: "\($r.databaseId)-\(.key)", summary: (.value | summary), body: .value } ] as $notes
+            replies: [], url: $r.url, id: "\($r.databaseId)-\(.key)", thread_id: null, node_id: null,
+            summary: (.value | summary), body: .value } ] as $notes
     | { pr: { number, title, url, state, draft: .isDraft, head: .headRefOid, head_ref: .headRefName, base_ref: .baseRefName },
         reviewer: (if $bot != "" then $bot else "any reviewer" end),
         runs: $runs,
@@ -201,7 +209,30 @@ status_bar() {
       + (if $n > 0 then " · \($n) open" else "" end)'
 }
 
+item() {
+  fetch | digest | jq -e --arg id "$1" '.items[] | select(.id == $id)' || { echo "no item $1 on PR #$pr" >&2; exit 2; }
+}
+
+mutate() { gh api graphql "$@" --jq '.data | to_entries[0].value'; }
+
 case "$mode" in
+  reply)
+    thread="$(item "$act_id" | jq -r '.thread_id // empty')"
+    [ -n "$thread" ] || { echo "$act_id is a general note: no thread to reply in" >&2; exit 2; }
+    mutate -f thread="$thread" -f body="$act_arg" -f query='
+      mutation($thread:ID!, $body:String!) { addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:$thread, body:$body}) { comment { url } } }' >/dev/null
+    echo "replied in the thread of $act_id" ;;
+  resolve)
+    thread="$(item "$act_id" | jq -r '.thread_id // empty')"
+    [ -n "$thread" ] || { echo "$act_id is a general note: no thread to resolve" >&2; exit 2; }
+    mutate -f thread="$thread" -f query='mutation($thread:ID!) { resolveReviewThread(input:{threadId:$thread}) { thread { isResolved } } }' >/dev/null
+    echo "resolved the thread of $act_id" ;;
+  react)
+    case "$act_arg" in up) content=THUMBS_UP ;; down) content=THUMBS_DOWN ;; *) echo "reaction must be up or down" >&2; exit 2 ;; esac
+    node="$(item "$act_id" | jq -r '.node_id // empty')"
+    [ -n "$node" ] || { echo "$act_id is a general note: nothing to react to" >&2; exit 2; }
+    mutate -f subject="$node" -f content="$content" -f query='mutation($subject:ID!, $content:ReactionContent!) { addReaction(input:{subjectId:$subject, content:$content}) { reaction { content } } }' >/dev/null
+    echo "reacted $act_arg on $act_id" ;;
   digest)
     json="$(add_fix_targets "$(fetch | digest)")"
     if [ "$format" = "json" ]; then echo "$json"; else render_md <<<"$json"; fi ;;
