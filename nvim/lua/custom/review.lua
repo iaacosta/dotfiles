@@ -340,7 +340,47 @@ local function require_active()
   return state ~= nil
 end
 
+-- The quickfix list opened by M.list, and the comment behind each of its entries
+---@type { id: integer, comments: table[] }?
+local listed = nil
+
+local function qf_items(comments)
+  local items = {}
+  for _, c in ipairs(comments) do
+    table.insert(items, {
+      filename = state.root .. '/' .. c.path,
+      lnum = c.line_start,
+      end_lnum = c.line_end,
+      col = c.col_start and c.col_start + 1,
+      end_col = c.col_end and c.col_end + 1,
+      text = ('[%s] %s'):format(c.rev == 'local' and 'local' or c.rev:sub(1, 7), vim.split(labeled_body(c), '\n')[1]),
+    })
+  end
+  return items
+end
+
+-- Rebuilds the list in place after comments change, keeping the cursor
+local function refresh_list()
+  if not (state and listed) then
+    return
+  end
+  local win = vim.fn.getqflist({ id = listed.id, winid = 0 }).winid
+  local cursor = win ~= 0 and vim.api.nvim_win_get_cursor(win)
+  listed.comments = vim.list_slice(state.review.comments)
+  if vim.fn.setqflist({}, 'r', { id = listed.id, items = qf_items(listed.comments) }) == -1 then
+    listed = nil -- Pushed out of the quickfix stack
+    return
+  end
+  if cursor and #listed.comments > 0 then
+    vim.api.nvim_win_set_cursor(win, { math.min(cursor[1], #listed.comments), cursor[2] })
+  end
+end
+
 local function comments_at_cursor()
+  if vim.bo.buftype == 'quickfix' then
+    local current = vim.fn.win_gettype() == 'quickfix' and listed and vim.fn.getqflist({ id = 0 }).id == listed.id
+    return current and { listed.comments[vim.fn.line '.'] } or {}
+  end
   local id = identity(vim.api.nvim_get_current_buf())
   if not id then
     return {}
@@ -434,6 +474,7 @@ function M.comment(range)
     })
     persist()
     render_visible()
+    refresh_list()
   end, { label = { label = last_label, blocking = false } })
 end
 
@@ -446,6 +487,7 @@ function M.edit()
       c.body, c.label, c.blocking = body, meta.label, meta.blocking
       persist()
       render_visible()
+      refresh_list()
     end, { label = { label = c.label or last_label, blocking = c.blocking or false } })
   end)
 end
@@ -460,6 +502,7 @@ function M.delete()
     end, state.review.comments)
     persist()
     render_visible()
+    refresh_list()
     notify 'Comment deleted'
   end)
 end
@@ -480,18 +523,9 @@ function M.list()
   if not require_active() then
     return
   end
-  local items = {}
-  for _, c in ipairs(state.review.comments) do
-    table.insert(items, {
-      filename = state.root .. '/' .. c.path,
-      lnum = c.line_start,
-      end_lnum = c.line_end,
-      col = c.col_start and c.col_start + 1,
-      end_col = c.col_end and c.col_end + 1,
-      text = ('[%s] %s'):format(c.rev == 'local' and 'local' or c.rev:sub(1, 7), vim.split(labeled_body(c), '\n')[1]),
-    })
-  end
-  vim.fn.setqflist({}, ' ', { title = 'Review comments', items = items })
+  listed = { comments = vim.list_slice(state.review.comments) }
+  vim.fn.setqflist({}, ' ', { title = 'Review comments', items = qf_items(listed.comments) })
+  listed.id = vim.fn.getqflist({ id = 0 }).id
   vim.cmd 'copen'
 end
 
