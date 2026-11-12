@@ -253,6 +253,7 @@ local function open_editor(title, initial, on_save, opts)
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, vim.split(initial, '\n'))
   vim.bo[buf].modified = false
 
+  local origin = vim.api.nvim_get_current_win()
   local win = vim.api.nvim_open_win(buf, true, {
     relative = 'cursor',
     style = 'minimal',
@@ -267,6 +268,16 @@ local function open_editor(title, initial, on_save, opts)
     footer_pos = 'center',
   })
   vim.wo[win].linebreak = true
+  -- However it closes, go back where the editor was opened from (e.g. the quickfix list)
+  vim.api.nvim_create_autocmd('WinClosed', {
+    pattern = tostring(win),
+    once = true,
+    callback = vim.schedule_wrap(function()
+      if vim.api.nvim_win_is_valid(origin) then
+        vim.api.nvim_set_current_win(origin)
+      end
+    end),
+  })
 
   local function close()
     if vim.api.nvim_win_is_valid(win) then
