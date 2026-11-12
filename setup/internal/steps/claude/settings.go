@@ -18,6 +18,12 @@ import (
 var defaultSettings = map[string]any{
 	"statusLine": map[string]any{"type": "command", "command": "~/.claude/statusline.sh"},
 	"tui":        "fullscreen",
+	"hooks": map[string]any{
+		"SessionStart": []any{map[string]any{"hooks": []any{map[string]any{
+			"type":    "command",
+			"command": "~/.local/bin/pr-review-digest --status 2>/dev/null || true",
+		}}}},
+	},
 }
 
 func settingsDefaults(_ context.Context, env *core.Env) (core.Plan, error) {
