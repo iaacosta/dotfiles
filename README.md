@@ -1,3 +1,4 @@
+| `~/dotfiles/bin/pr-review-digest` | `~/.local/bin/pr-review-digest` |
 # Dotfiles
 
 Personal development environment configuration for macOS and Linux/WSL.
