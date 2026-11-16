@@ -158,10 +158,12 @@ local function text_width(bufnr)
   return math.max(20, math.min(100, info.width - info.textoff - vim.fn.strdisplaywidth(comment_prefix)))
 end
 
--- Conventional comments (conventionalcomments.org) labels, in <Tab> cycling order
-local labels = { 'suggestion', 'issue', 'question', 'nitpick', 'thought', 'praise' }
+-- Conventional comments (conventionalcomments.org) labels, in <Tab> cycling order.
+-- `avoid` is our own addition for agents: the negative of praise, a pattern to
+-- fix here and not repeat in future work.
+local labels = { 'suggestion', 'issue', 'question', 'nitpick', 'thought', 'praise', 'avoid' }
 local last_label = labels[1]
-local severity = { suggestion = 'Info', issue = 'Warn', question = 'Hint', thought = 'Hint', praise = 'Ok' }
+local severity = { suggestion = 'Info', issue = 'Warn', question = 'Hint', thought = 'Hint', praise = 'Ok', avoid = 'Warn' }
 
 -- Sign, virtual text and plain text highlights; anything blocking reads as an error
 local function comment_hl(c)
@@ -568,10 +570,12 @@ local function export_comment(c, notes)
 end
 
 function M.export()
-  local groups, order, praise = {}, {}, {}
+  local groups, order, praise, avoid = {}, {}, {}, {}
   for _, c in ipairs(state.review.comments) do
     if c.label == 'praise' then
       table.insert(praise, c)
+    elseif c.label == 'avoid' then
+      table.insert(avoid, c)
     else
       local key = c.commit or 'worktree'
       if not groups[key] then
@@ -597,6 +601,18 @@ function M.export()
     table.insert(out, key == 'worktree' and '## Working tree' or ('## %s %s'):format(key:sub(1, 7), group[1].subject))
     for _, c in ipairs(group) do
       vim.list_extend(out, export_comment(c))
+    end
+  end
+  if #avoid > 0 then
+    table.sort(avoid, by_location)
+    vim.list_extend(out, {
+      '',
+      '## Stop doing',
+      '',
+      "Fix these like any other comment. They're also patterns I don't want to see again: remember each one, generalized beyond this change, so it doesn't come back in future work.",
+    })
+    for _, c in ipairs(avoid) do
+      vim.list_extend(out, export_comment(c, { c.commit and c.commit:sub(1, 7) }))
     end
   end
   -- Last, so the actionable comments come first
